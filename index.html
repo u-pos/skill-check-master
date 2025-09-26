@@ -201,11 +201,11 @@
   const cwDelta=(from,to)=> (from - to + FULL) % FULL;
 
   // 角度の更新（時計回り）
-  const angleAt=t=>{
-    const rps=CONFIG.RPM/60;
-    const d=(t-baseTime)/1000;
-    return norm(baseAngle - rps*FULL*d);
-  };
+  const angleAt = t => {
+  const rps = CONFIG.RPM / 60;
+  const d = (t - baseTime) / 1000;
+  return norm(baseAngle + rps * FULL * d);
+};
   const getCurrentAngle=t=>(phase==='play')?angleAt(t):frozenAngle;
 
   function draw(angle){
@@ -255,23 +255,24 @@
   function randomIn(min,max){ return min + Math.random()*(max-min); }
 
   // 5～10時レンジでGood配置 → GreatはGood右端合わせ
-  function placeZones(){
-    const goodW  = FULL * CONFIG.GOOD_RATIO;
-    const greatW = FULL * CONFIG.GREAT_RATIO;
+ function placeZones(){
+  const goodW  = FULL * CONFIG.GOOD_RATIO;
+  const greatW = FULL * CONFIG.GREAT_RATIO;
 
-    const cdeg = randomIn(CONFIG.GREAT_CENTER_MIN_DEG, CONFIG.GREAT_CENTER_MAX_DEG);
-    const c = norm(deg2rad(cdeg));
+  const cdeg = randomIn(CONFIG.GREAT_CENTER_MIN_DEG, CONFIG.GREAT_CENTER_MAX_DEG);
+  const c = norm(deg2rad(cdeg));
 
-    const bStart = norm(c - goodW/2);
-    const bEnd   = norm(c + goodW/2);
+  const bStart = norm(c - goodW/2);
+  const bEnd   = norm(c + goodW/2);
 
-    // GreatはGoodの右端（＝bEnd）に接する
-    const gEnd   = bEnd;
-    const gStart = norm(gEnd - greatW);
+  // ★修正：GreatはGoodの“左端”に接する
+  const gStart = bStart;
+  const gEnd   = norm(gStart + greatW);
 
-    goodStart=bStart; goodEnd=bEnd;
-    greatStart=gStart; greatEnd=gEnd;
-  }
+  goodStart=bStart; goodEnd=bEnd;
+  greatStart=gStart; greatEnd=gEnd;
+}
+
 
   // ===== ループ（通過検知：Good右端を越えたらミス） =====
   function loop(now){

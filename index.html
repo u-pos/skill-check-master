@@ -82,16 +82,16 @@
 
     <div class="tap-row" id="tapRow"><button id="tapBtn" disabled>TAP</button></div>
 
-    <!-- スタート＋ランキング（通常） -->
+     <!-- スタート＋ランキング（通常） -->
     <div class="bar" id="btnBar">
       <button id="startBtn" class="btn">▶ スタート</button>
-      <button id="rankNormalBtn" class="btn">🏆（通常）</button>
+      <button id="rankNormalBtn" class="btn">🏆（通常モード）</button>
     </div>
 
     <!-- ララバイモード＋ランキング（ララバイ） -->
     <div id="lullabyWrap">
-      <button id="lullabyBtn" class="btn">♪ ララバイモード</button>
-      <button id="rankLullabyBtn" class="btn">🏆（ララバイモード）</button>
+      <button id="lullabyBtn" class="btn">ララバイモード</button>
+      <button id="rankLullabyBtn" class="btn">🏆（ララバイ）</button>
     </div>
   </div>
 
@@ -121,10 +121,10 @@
     INPUT_CD_MS: 45,
     UNLOCK_STREAK: 10,             // 10連続でララバイ解放
 
-    SUCCESS_PAUSE_MS: 1300,        // ★成功→次ラウンド待機：1.3s（この中の最初の0.3sは静止表示）
-    SUCCESS_FREEZE_VISIBLE_MS: 300,// ★成功直後の静止表示時間（針＆ゾーンは見せたまま） 
-    SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n再生→0.4s後に再表示
-    LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.3秒ランダム 
+    SUCCESS_PAUSE_MS: 1300,        // 成功後→次ラウンド待機：1.3s
+    SUCCESS_FREEZE_VISIBLE_MS: 300,// 成功直後の静止表示：0.3s（針＆ゾーン見せたまま）
+    SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n→0.4s後に再表示
+    LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.3秒
     LULLABY_MAX_DELAY_MS: 1300 
   };
 
@@ -273,7 +273,7 @@
   }
   function randomIn(min,max){ return min + Math.random()*(max-min); }
 
-  // ★ 表示用：角度 a を時計回り弧 s→e 内にクランプ（Great端へ吸着）
+  // 表示用：角度 a を時計回り弧 s→e 内にクランプ（Great端へ吸着）
   function clampAngleToArc(a, s, e){
     let ss = s, ee = e, aa = a;
     if (ee < ss) ee += FULL;
@@ -396,10 +396,10 @@
   function endRoundAndQueueNext(){
     phase='pause';
 
-    // 現在角度を取得し、表示用は Great 範囲へクランプ
+    // 現在角度を取得し、表示用は Great 範囲へクランプ（“おまけグレイト”対策）
     const now = performance.now();
     const curAngle = angleAt(now);
-    const displayAngle = norm(greatEnd); // グッドとグレイトの境目に固定
+    const displayAngle = norm(greatEnd); // 境目に固定
 
 
     // ① フリーズ前に「グレイト！」を出す（→ フリーズ中も表示される）
@@ -483,11 +483,16 @@
     saveScore({score:streak, at:Date.now()});
     updateUnlockVisibility();
 
-    // 失敗表示は白
+    // ★ 10回以上でミス → 特別メッセージ（黄色）
     overlay.classList.add('show');
     const ov = overlay.querySelector('.ovtxt');
-    ov.style.color = '#ffffff';
-    ov.textContent = '失敗';
+    if (streak >= 10) {
+      ov.style.color = 'yellow';
+      ov.innerHTML = '10回達成おめでとう！<br><br><br>ララバイモードアンロック！';
+    } else {
+      ov.style.color = '#ffffff';
+      ov.textContent = '失敗';
+    }
   }
 
   function stopGame(keepOverlay){

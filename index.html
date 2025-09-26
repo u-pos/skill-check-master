@@ -273,6 +273,17 @@
   }
   function randomIn(min,max){ return min + Math.random()*(max-min); }
 
+  // ★ 表示用：角度 a を時計回り弧 s→e 内にクランプ（Great端へ吸着）
+  function clampAngleToArc(a, s, e){
+    let ss = s, ee = e, aa = a;
+    if (ee < ss) ee += FULL;
+    while (aa < ss) aa += FULL;
+    while (aa > ee) aa -= FULL;
+    if (aa < ss) aa = ss;
+    if (aa > ee) aa = ee;
+    return norm(aa);
+  }
+
   // 5～10時レンジに Good を置く → Great は Good の「進入側＝右端（先頭）」に接する
   function placeZones(){
     const goodW  = FULL * CONFIG.GOOD_RATIO;
@@ -381,40 +392,55 @@
     rafId=requestAnimationFrame(loop);
   }
 
-  // Great 成功ラウンド終了→次ラウンド（0.3秒は表示のまま静止→残りは演出）
+  // ★ 修正：フリーズ中も「グレイト！」を表示し、針は Great 弧の端にクランプ表示
   function endRoundAndQueueNext(){
     phase='pause';
 
-    // 現在角度で固定して 0.3s 静止（針＆ゾーンは見せたまま）
+    // 現在角度を取得し、表示用は Great 範囲へクランプ
     const now = performance.now();
-    frozenAngle = angleAt(now);
+    const curAngle = angleAt(now);
+    const displayAngle = clampAngleToArc(curAngle, greatStart, greatEnd);
+
+    // ① フリーズ前に「グレイト！」を出す（→ フリーズ中も表示される）
+    overlay.classList.add('show');
+    overlay.querySelector('.ovtxt').style.color = 'yellow';
+    overlay.querySelector('.ovtxt').textContent='グレイト！';
+
+    // ② フリーズ：針＆ゾーンは見せたまま、針は Great の端（or 内部）に固定表示
+    frozenAngle = displayAngle;
     showNeedle = true;
     showZones  = true;
     draw(frozenAngle);
 
     const freeze = CONFIG.SUCCESS_FREEZE_VISIBLE_MS;               // 0.3s
-    const remain = Math.max(0, CONFIG.SUCCESS_PAUSE_MS - freeze);  // 1.0s
+    const remain = Math.max(0, CONFIG.SUCCESS_PAUSE_MS - freeze);  // 残り（1.0s など）
 
+    // フリーズ後も少し演出してから次ラウンド準備（テキストはこの間も表示のまま）
     setTimeout(()=>{
-      // 成功演出：「グレイト！」（黄色）を表示し、以降は非表示にして次準備
-      overlay.classList.add('show');
-      overlay.querySelector('.ovtxt').style.color = 'yellow';
-      overlay.querySelector('.ovtxt').textContent='グレイト！';
+      // ③ 成功演出：ゾーン隠し・次ラウンドのゾーン計算
+      showNeedle=false;
+      showZones=false;
+      draw(frozenAngle);
 
-      showNeedle=false; showZones=false; draw(frozenAngle);
-      placeZones(); // 次ラウンドのゾーンを先に更新
+      placeZones();
 
       setTimeout(()=>{
+        // 表示をクリア
         overlay.classList.remove('show');
         overlay.querySelector('.ovtxt').textContent='';
-        if(mode==='normal'){ playSE('ka_n'); } // ラウンド開始音
+
+        // 次ラウンド開始の前振り
+        if(mode==='normal'){ playSE('ka_n'); }
         const extra = (mode==='normal')
           ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
           : Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
+
         setTimeout(()=>{
           const t=performance.now();
           setNeedleAt12(t);
-          showNeedle=true; showZones=true; draw(frozenAngle);
+          showNeedle=true;
+          showZones=true;
+          draw(frozenAngle);
           startedGuard=true; // 再開直後の誤判定防止
           phase='play';
         }, extra);

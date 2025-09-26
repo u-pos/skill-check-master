@@ -425,8 +425,7 @@
     const now = performance.now();
     const curAngle = angleAt(now);
     // 安全策：lastSuccessAngle 未設定時は現在角度を採用
-    const displayAngle =
-      (lastSuccessWasGrace ? norm(greatEnd) : (lastSuccessAngle ?? curAngle));
+    const displayAngle = lastSuccessWasGrace ? norm(greatEnd) : (lastSuccessAngle ?? curAngle);
 
     frozenAngle = displayAngle;
     showNeedle = true;

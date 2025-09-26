@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>スキチェマスターTHE GAME</title> 
+<title>スキチェマスター・ザ・ゲーム</title> 
 <style>
   :root{ --bg:#0f1115; --fg:#eaeef2; }
   html,body{
@@ -33,7 +33,7 @@
 
   .welcome{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;z-index:2;
     text-align:center;background:rgba(0,0,0,.25)}
-  .welcome h2{margin:0;font-size:clamp(24px,7vw,43px);font-weight:900;color:#c8ffe0;transform: translateY(60%);} 
+  .welcome h2{margin:0;font-size:clamp(24px,7vw,43px);font-weight:900;color:#c8ffe0;transform: translateY(50%);} 
 
   .tap-row{width:100%;max-width:820px;margin-top:2px;display:flex;justify-content:center}
   #tapBtn{
@@ -70,7 +70,7 @@
 </style>
 </head>
 <body>
-  <header class="title" id="hdr"><h1>スキチェマスター・ザ・Fゲーム</h1></header> 
+  <header class="title" id="hdr"><h1>スキチェマスター・ザ・ゲーム</h1></header> 
 
   <div class="wrap">
     <div class="board" id="board">
@@ -85,13 +85,13 @@
     <!-- スタート＋ランキング（通常） -->
     <div class="bar" id="btnBar">
       <button id="startBtn" class="btn">▶ スタート</button>
-      <button id="rankNormalBtn" class="btn">🏆通常</button>
+      <button id="rankNormalBtn" class="btn">🏆 通常</button>
     </div>
 
     <!-- ララバイモード＋ランキング（ララバイ） -->
     <div id="lullabyWrap">
-      <button id="lullabyBtn" class="btn">ララバイモード</button>
-      <button id="rankLullabyBtn" class="btn">🏆ララバイ</button>
+      <button id="lullabyBtn" class="btn">♪ ララバイモード</button>
+      <button id="rankLullabyBtn" class="btn">🏆 ララバイ</button>
     </div>
   </div>
 
@@ -127,8 +127,8 @@
     LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.3秒
     LULLABY_MAX_DELAY_MS: 1300,
 
-    // ★おまけグレイト：Great終端を“時計回りに”超えても成功にする許容角（度）
-    GREAT_OVERSHOOT_GRACE_DEG: 6   // 調整用（例：6度）
+    // おまけグレイト許容角（Great終端を時計回りに超えた分、度）←少し狭く
+    GREAT_OVERSHOOT_GRACE_DEG: 4
   };
 
   // ===== 要素 =====
@@ -165,7 +165,7 @@
   let startedGuard=false;        // 開始直後1フレームは通過判定を無効化
   const EPS=1e-4;
 
-  // 成功時の表示制御（今回追加）
+  // 成功時の表示制御
   let lastSuccessAngle = null;       // 実際に止めた角度
   let lastSuccessWasGrace = false;   // おまけグレイトだったか
 
@@ -262,11 +262,12 @@
       ctx.lineWidth=6; ctx.lineCap='butt'; ctx.strokeStyle='#ef4444'; ctx.stroke();
     }
 
-    // 連続表示
+    // 連続表示（★フォント1.2倍）
     const combo=String(streak);
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.font=`900 ${Math.max(18,Math.round(r*0.32))}px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif`;
-    ctx.lineWidth=Math.max(2,Math.round(r*0.04)); ctx.strokeStyle='rgba(0,0,0,0.55)'; ctx.strokeText(combo,CX,CY-r*0.18);
+    ctx.font=`900 ${Math.max(18,Math.round(r*0.32*1.2))}px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif`;
+    ctx.lineWidth=Math.max(2,Math.round(r*0.04)); 
+    ctx.strokeStyle='rgba(0,0,0,0.55)'; ctx.strokeText(combo,CX,CY-r*0.18);
     ctx.fillStyle='#eaeef2'; ctx.fillText(combo,CX,CY-r*0.18); ctx.restore();
   }
 
@@ -312,14 +313,12 @@
   // 角度 a が「時計回りの弧 s→e」に含まれるか
   function inArcCW(a,s,e){ return (s<=e) ? (a>=s && a<=e) : (a>=s || a<=e); }
 
-  // ★“おまけグレイト”判定（Great終端を少し時計回りに超えているか）
+  // “おまけグレイト”判定（Great終端を少し時計回りに超えているか）
   function isGraceGreat(a){
     const grace = deg2rad(CONFIG.GREAT_OVERSHOOT_GRACE_DEG);
-    // Great内なら false（通常成功として扱う）
-    if (inArcCW(a, greatStart, greatEnd)) return false;
-    // greatEnd から a までの時計回り差分が grace 以下なら“おまけ”
-    const over = cwDelta(greatEnd, a);
-    return over > 0 && over <= grace;
+    if (inArcCW(a, greatStart, greatEnd)) return false; // 既にGreat内は通常成功
+    const over = cwDelta(greatEnd, a);                  // greatEnd→a の時計回り差
+    return over > 0 && over <= grace;                   // greatEnd直後（= Good側）だけおまけ
   }
 
   // ===== ループ（“最初にグッドゾーンを通り越した”瞬間にミス） =====
@@ -328,14 +327,13 @@
     draw(ang);
 
     if(phase==='play' && lastAngle!=null){
-      if (startedGuard){          // 開始直後の誤判定ガード
+      if (startedGuard){
         startedGuard=false;
       } else {
         const movedCW = cwDelta(lastAngle, ang);
         const toGoodEnd = cwDelta(lastAngle, goodEnd);
         if (movedCW > EPS && toGoodEnd > EPS && movedCW > toGoodEnd){
-          // 何も押さずにGoodを通過 → 自動ミスは ex.mp3
-          gameOver('ex');
+          gameOver('ex'); // 何も押さずにGoodを通過
           return;
         }
       }
@@ -354,15 +352,17 @@
   function setupInitial(){
     placeZones();
     resizeCanvas();
-    // 成功情報のリセット
     lastSuccessAngle = null;
     lastSuccessWasGrace = false;
   }
 
   function showCountdown(){
     overlay.classList.add('show');
-    overlay.querySelector('.ovtxt').style.color = 'yellow';
-    overlay.querySelector('.ovtxt').textContent='Ready';
+    const ov=overlay.querySelector('.ovtxt');
+    ov.style.transform='translateY(30%)'; // 既定位置
+    ov.style.color='yellow';
+    ov.textContent='Ready';
+
     tapBtn.disabled=true; phase='countdown';
     showNeedle=false; showZones=true; draw(frozenAngle);
 
@@ -371,8 +371,7 @@
       const now=performance.now();
       if(now>=end){
         overlay.classList.remove('show');
-        overlay.querySelector('.ovtxt').textContent='';
-        // 初回ラウンド開始：通常はka-n→0.4s後、ララバイはランダム遅延で開始
+        ov.textContent='';
         phase='pause';
         const startAfter = ()=>{
           const t=performance.now();
@@ -392,7 +391,7 @@
         return;
       }
       if(now>=mid){
-        const el=overlay.querySelector('.ovtxt'); if(el) el.textContent='GO!';
+        ov.textContent='GO!';
       }
       requestAnimationFrame(tick);
     };
@@ -400,10 +399,10 @@
   }
 
   function startGame(which){
-    mode=which; // 'normal' | 'lullaby'
+    mode=which;
     isEnding=false;
     welcome.style.display='none';
-    playSE('ready'); unlockAndWarmAudio(); // スタート直後に ready
+    playSE('ready'); unlockAndWarmAudio();
     if(rafId) cancelAnimationFrame(rafId);
     streak=0;
     showNeedle=false; showZones=true;
@@ -416,27 +415,28 @@
   function endRoundAndQueueNext(){
     phase='pause';
 
-    // ① 「グレイト！」はフリーズ前に表示（フリーズ中も見せる）
+    // 「グレイト！」（通常のオーバーレイ位置でOK）
     overlay.classList.add('show');
-    overlay.querySelector('.ovtxt').style.color = 'yellow';
-    overlay.querySelector('.ovtxt').textContent='グレイト！';
+    const ov=overlay.querySelector('.ovtxt');
+    ov.style.transform='translateY(30%)';
+    ov.style.color='yellow';
+    ov.textContent='グレイト！';
 
-    // ② フリーズ中の針表示：通常は止めた角度のまま／おまけのときだけ境目へ吸着
+    // フリーズ中の針表示：通常は止めた角度／おまけだけ境目へ吸着
     const now = performance.now();
     const curAngle = angleAt(now);
-    // 安全策：lastSuccessAngle 未設定時は現在角度を採用
-    const displayAngle = lastSuccessWasGrace ? norm(greatEnd) : (lastSuccessAngle ?? curAngle);
+    const displayAngle =
+      (lastSuccessWasGrace ? norm(greatEnd) : (lastSuccessAngle ?? curAngle));
 
     frozenAngle = displayAngle;
     showNeedle = true;
     showZones  = true;
     draw(frozenAngle);
 
-    const freeze = CONFIG.SUCCESS_FREEZE_VISIBLE_MS;               // 0.3s
-    const remain = Math.max(0, CONFIG.SUCCESS_PAUSE_MS - freeze);  // 残り（1.0s など）
+    const freeze = CONFIG.SUCCESS_FREEZE_VISIBLE_MS;
+    const remain = Math.max(0, CONFIG.SUCCESS_PAUSE_MS - freeze);
 
     setTimeout(()=>{
-      // ③ 成功演出：ゾーン隠し・次ラウンドのゾーン計算
       showNeedle=false;
       showZones=false;
       draw(frozenAngle);
@@ -444,11 +444,9 @@
       placeZones();
 
       setTimeout(()=>{
-        // 表示をクリア
         overlay.classList.remove('show');
-        overlay.querySelector('.ovtxt').textContent='';
+        ov.textContent='';
 
-        // 次ラウンド開始の前振り
         if(mode==='normal'){ playSE('ka_n'); }
         const extra = (mode==='normal')
           ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
@@ -460,7 +458,7 @@
           showNeedle=true;
           showZones=true;
           draw(frozenAngle);
-          startedGuard=true; // 再開直後の誤判定防止
+          startedGuard=true;
           phase='play';
         }, extra);
       }, remain);
@@ -479,20 +477,17 @@
     const grace   = isGraceGreat(a);
 
     if(inGreat || grace){
-      // 成功：通常 or おまけグレイト
       playSE('tap');
       streak++;
       if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); }
 
-      lastSuccessAngle = a;            // 実際の停止角
-      lastSuccessWasGrace = !inGreat && grace; // おまけかどうか
+      lastSuccessAngle = a;
+      lastSuccessWasGrace = !inGreat && grace;
 
       endRoundAndQueueNext();
     }else if(inGood){
-      // Good に触れた TAP は失敗（おまけ条件に該当しない場合）
       gameOver('batu');
     }else{
-      // Good/Great外は常に ex
       gameOver('ex');
     }
   }
@@ -501,19 +496,29 @@
     if(isEnding) return;
     isEnding=true;
 
-    if(soundKey){ playSE(soundKey); } // 指定サウンドを1つだけ鳴らす
+    if(soundKey){ playSE(soundKey); }
 
     stopGame(true);
     saveScore({score:streak, at:Date.now()});
     updateUnlockVisibility();
 
-    // 10回以上でミス → 特別メッセージ（黄色）
     overlay.classList.add('show');
     const ov = overlay.querySelector('.ovtxt');
+
     if (streak >= 10) {
-      ov.style.color = 'yellow';
-      ov.innerHTML = '10回達成おめでとう！<br><br><br>ララバイモードアンロック！';
+      // 10回達成メッセージは円中心に2行で表示
+      ov.style.transform = 'translateY(0)';
+
+      if (mode === 'lullaby') {
+        // ★ララバイ時の特別文言
+        ov.innerHTML = '<span style="color:#ffffff">ララバイモードで10回連続は神。</span><br><span style="color:yellow">ぜひXでスクショを投稿してね！</span>';
+      } else {
+        // 通常モードの達成メッセージ（前回仕様を踏襲）
+        ov.innerHTML = '<span style="color:#ffffff">10回達成おめでとう！🎉</span><br><span style="color:yellow">ララバイモードアンロック！</span>';
+      }
     } else {
+      // 通常の失敗表示（既定位置へ戻す）
+      ov.style.transform = 'translateY(30%)';
       ov.style.color = '#ffffff';
       ov.textContent = '失敗';
     }

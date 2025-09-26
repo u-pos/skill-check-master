@@ -59,6 +59,7 @@
   }
   #startBtn{background:#10b981;border-color:#065f46;color:#062e26}
 
+  /* ララバイ */
   #lullabyBtn{display:none;background:#a855f7;border-color:#6d28d9}
   #rankLullabyBtn{display:none}
 
@@ -81,17 +82,20 @@
 
     <div class="tap-row" id="tapRow"><button id="tapBtn" disabled>TAP</button></div>
 
+    <!-- スタート＋ランキング（通常） -->
     <div class="bar" id="btnBar">
       <button id="startBtn" class="btn">▶ スタート</button>
       <button id="rankNormalBtn" class="btn">🏆（通常）</button>
     </div>
 
+    <!-- ララバイモード＋ランキング（ララバイ） -->
     <div id="lullabyWrap">
       <button id="lullabyBtn" class="btn">♪ ララバイモード</button>
       <button id="rankLullabyBtn" class="btn">🏆（ララバイ）</button>
     </div>
   </div>
 
+  <!-- ランキング -->
   <dialog id="rankDlg">
     <div class="dlg-head" id="rankTitle">🏆 自己ランキングTOP5（通常）</div>
     <div class="dlg-body">
@@ -104,22 +108,23 @@
 (() => {
   // ===== 設定 =====
   const CONFIG = {
-    RPM: 60,                  // 針回転（初期版と同じ体感）
+    RPM: 60,                  // 針の回転速度（初期版と同じ体感）
     COUNTDOWN_MS: 1200,
 
-    // 幅（本家寄せはあとで微調整）：Greatは前回比 約60%
+    // 幅：Greatは以前より約60%へ（= 0.06 → 0.036）
     GOOD_RATIO  : 0.20,       // Good 幅（円周比）
-    GREAT_RATIO : 0.036,      // Great 幅（円周比）← 0.06 の約60%
+    GREAT_RATIO : 0.036,      // Great 幅（円周比）
 
-    // 5時～10時レンジ（0rad=3時、CCW基準）※配置はこの範囲内で行う
+    // Great/Good の中心を 5時～10時の間に置く（0rad=3時、CCW正）
     GREAT_CENTER_MIN_DEG: 60,
     GREAT_CENTER_MAX_DEG: 210,
 
     INPUT_CD_MS: 45,
-    UNLOCK_STREAK: 10,
+    UNLOCK_STREAK: 10,        // 10連続でララバイ解放
 
-    SHOW_DELAY_AFTER_KAN_MS: 400,
-    LULLABY_MIN_DELAY_MS: 400,
+    // Great成功後の再開タイミング
+    SHOW_DELAY_AFTER_KAN_MS: 400, // 通常：ka-n再生→0.4s後に再表示
+    LULLABY_MIN_DELAY_MS: 400,    // ララバイ：0.4〜1.5秒ランダム
     LULLABY_MAX_DELAY_MS: 1500
   };
 
@@ -138,22 +143,24 @@
 
   const FULL=Math.PI*2;
 
-  // 時計回りで減少させる
-  let baseAngle=-Math.PI/2; // 12時
+  // 時計回り：基準角は12時（-π/2）からマイナス方向へ進める
+  let baseAngle=-Math.PI/2;
   let baseTime=0;
   let frozenAngle=-Math.PI/2;
 
   // ゾーン
-  let goodStart=0, goodEnd=0;    // Good弧（CCWで start→end）
-  let greatStart=0, greatEnd=0;  // Greatは「Goodの右端」に接する（= greatEnd=goodEnd）
+  let goodStart=0, goodEnd=0;    // Good（CCWで start→end）
+  let greatStart=0, greatEnd=0;  // Great は Good の「右端」に接する（＝greatEnd=goodEnd）
 
   // 表示制御
   let showNeedle=false, showZones=true;
 
-  // 直前角度（通過検知用）
+  // 通過判定用
   let lastAngle=null;
+  let startedGuard=false;        // 開始直後1フレームは通過判定を無効化
+  const EPS=1e-4;
 
-  // ===== 画面高フィット =====
+  // ===== レイアウト =====
   function visualH(){ return (window.visualViewport?.height) || window.innerHeight; }
   function fitBoardToViewport(){
     const vh=visualH(), headH=hdr.offsetHeight, tapH=tapRow.offsetHeight, barH=btnBar.offsetHeight;
@@ -194,18 +201,18 @@
   function playSE(key){ if(isMuted) return; if(playBuf(key)) return; unlockAndWarmAudio(); const tag=html[key]; if(tag){ try{ tag.currentTime=0; tag.play(); }catch{} } }
   window.addEventListener('pointerdown', ()=>{ unlockAndWarmAudio(); }, {once:true});
 
-  // ===== 角度/描画 =====
+  // ===== 角度／描画 =====
   const norm=a=>(a%FULL+FULL)%FULL;
 
-  // 時計回りの「進み量」(from→toへCWで何rad進んだか)
+  // 時計回りの進み量（from→to のCW距離）
   const cwDelta=(from,to)=> (from - to + FULL) % FULL;
 
-  // 角度の更新（時計回り）
+  // 時計回りで回す（12時からマイナス方向）
   const angleAt = t => {
-  const rps = CONFIG.RPM / 60;
-  const d = (t - baseTime) / 1000;
-  return norm(baseAngle + rps * FULL * d);
-};
+    const rps = CONFIG.RPM / 60;
+    const d = (t - baseTime) / 1000;
+    return norm(baseAngle - rps * FULL * d);
+  };
   const getCurrentAngle=t=>(phase==='play')?angleAt(t):frozenAngle;
 
   function draw(angle){
@@ -215,20 +222,18 @@
     // 外枠
     ctx.beginPath(); ctx.arc(CX,CY,r,0,FULL); ctx.lineWidth=2; ctx.strokeStyle='#1a2330'; ctx.stroke();
 
-    // ゾーン（Good→Greatの順で上描き）
+    // ゾーン（Good→Great）
     if(showZones){
-      // Good（淡色）
       ctx.beginPath();
       ctx.lineWidth=24; ctx.strokeStyle='#94a3b8';
       ctx.arc(CX,CY,r,goodStart,goodEnd); ctx.stroke();
 
-      // Great（白）…Goodの右端（時計回りで最初に当たる端）に接する
       ctx.beginPath();
       ctx.lineWidth=24; ctx.strokeStyle='#ffffff';
       ctx.arc(CX,CY,r,greatStart,greatEnd); ctx.stroke();
     }
 
-    // 針（※Y座標のバグ修正：CY + r*sin）
+    // 針（修正済：Y=CY + r*sin）
     if(showNeedle){
       const fx=CX + r*1.2*Math.cos(angle);
       const fy=CY + r*1.2*Math.sin(angle);
@@ -254,44 +259,43 @@
   }
   function randomIn(min,max){ return min + Math.random()*(max-min); }
 
-  // 5～10時レンジでGood配置 → GreatはGood右端合わせ
- function placeZones(){
-  const goodW  = FULL * CONFIG.GOOD_RATIO;
-  const greatW = FULL * CONFIG.GREAT_RATIO;
+  // 5～10時レンジに Good を置く → Great は Good の「右端」に接する
+  function placeZones(){
+    const goodW  = FULL * CONFIG.GOOD_RATIO;
+    const greatW = FULL * CONFIG.GREAT_RATIO;
 
-  const cdeg = randomIn(CONFIG.GREAT_CENTER_MIN_DEG, CONFIG.GREAT_CENTER_MAX_DEG);
-  const c = norm(deg2rad(cdeg));
+    const cdeg = randomIn(CONFIG.GREAT_CENTER_MIN_DEG, CONFIG.GREAT_CENTER_MAX_DEG);
+    const c = norm(deg2rad(cdeg));
 
-  const bStart = norm(c - goodW/2);
-  const bEnd   = norm(c + goodW/2);
+    const bStart = norm(c - goodW/2);
+    const bEnd   = norm(c + goodW/2); // CCW上の右端＝CWでは最初に当たる端
 
-  // ★修正：GreatはGoodの“左端”に接する
-  const gStart = bStart;
-  const gEnd   = norm(gStart + greatW);
+    const gEnd   = bEnd;              // Great は Good の右端に接する
+    const gStart = norm(gEnd - greatW);
 
-  goodStart=bStart; goodEnd=bEnd;
-  greatStart=gStart; greatEnd=gEnd;
-}
+    goodStart=bStart; goodEnd=bEnd;
+    greatStart=gStart; greatEnd=gEnd;
+  }
 
-
-  // ===== ループ（通過検知：Good右端を越えたらミス） =====
+  // ===== ループ（Good右端を“通り越した”らミス） =====
   function loop(now){
     const ang=getCurrentAngle(now);
     draw(ang);
 
     if(phase==='play' && lastAngle!=null){
-      // 直前→現在で「時計回りにどれだけ進んだか」
-      const movedCW = cwDelta(lastAngle, ang);
-      // 直前位置からGood右端(bEnd)までのCW距離
-      const toGoodRightCW = cwDelta(lastAngle, goodEnd);
-      // 右端を通過（到達含む）したらミス
-      if(movedCW >= toGoodRightCW){
-        gameOver();
-        return; // 停止
+      if (startedGuard){          // 最初の1フレームは判定スキップ
+        startedGuard=false;
+      } else {
+        const movedCW = cwDelta(lastAngle, ang);      // 直前→現在のCW進み量
+        const toRight = cwDelta(lastAngle, goodEnd);  // 直前位置→Good右端までのCW距離
+        // “通り越した”場合のみミス（同位置や極小移動は無視）
+        if (movedCW > EPS && toRight > EPS && movedCW > toRight){
+          gameOver();
+          return;
+        }
       }
     }
-    lastAngle = ang;
-
+    lastAngle=ang;
     rafId=requestAnimationFrame(loop);
   }
 
@@ -300,10 +304,7 @@
     const ts=(e&&typeof e.timeStamp==='number')?e.timeStamp:performance.now();
     return (Math.abs(ts - performance.now()) < 10000) ? ts : performance.now();
   }
-  function isInArc(a, s, e){
-    // CCW定義の弧 s→e に角度aが含まれるか
-    return (s<=e) ? (a>=s && a<=e) : (a>=s || a<=e);
-  }
+  function isInArc(a, s, e){ return (s<=e) ? (a>=s && a<=e) : (a>=s || a<=e); }
 
   // ===== ゲームロジック =====
   function setupInitial(){
@@ -326,6 +327,8 @@
         setNeedleAt12(now);
         phase='play'; tapBtn.disabled=false;
         showNeedle=true; showZones=true;
+        // ★初回フレーム判定ガードON
+        startedGuard=true;
         return;
       }
       if(now>=mid){
@@ -349,16 +352,15 @@
   }
 
   function endRoundAndQueueNext(){
-    // Great 成功演出：針＆ゾーンを隠す
+    // Great成功：針＆ゾーンをいったん非表示
     showNeedle=false; showZones=false; draw(frozenAngle);
 
-    // 次ラウンド用にゾーン再配置
+    // 次ラウンドのゾーンを先に再配置
     placeZones();
 
-    // 待機→再開
-    const playKan = (mode==='normal');
+    // 2秒停止 →（通常のみka-n）→ 再表示
     setTimeout(()=>{
-      if(playKan){ playSE('kan'); }
+      if(mode==='normal'){ playSE('kan'); }
       const extra = (mode==='normal')
         ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
         : Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
@@ -366,8 +368,10 @@
         const t=performance.now();
         setNeedleAt12(t);
         showNeedle=true; showZones=true; draw(frozenAngle);
+        // 再開直後の誤判定防止
+        startedGuard=true;
       }, extra);
-    }, 2000); // 2秒静止
+    }, 2000);
   }
 
   function onTap(e){
@@ -387,10 +391,9 @@
       if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); }
       endRoundAndQueueNext();
     }else if(inGood){
-      // Goodに触れた時点でもゲーム終了（仕様「通り越すまでOK」より厳しめにしたくないならここを外してOK）
+      // Goodに触れたら終了（仕様：通過判定とは別にタップでも終了）
       gameOver();
     }else{
-      // ミス（Good未満）
       gameOver();
     }
   }
@@ -457,8 +460,8 @@
 
   muteBtn.addEventListener('click', e=>{ e.preventDefault(); setMuted(!isMuted); }, {passive:false});
   $('rankNormalBtn').addEventListener('click', e=>{ e.preventDefault(); openRanking('normal'); }, {passive:false});
-  $('rankLullabyBtn').addEventListener('click', e=>{ e.preventDefault(); openRanking('lullaby'); }, {passive:false});
-  $('closeRank')    .addEventListener('click', e=>{ e.preventDefault(); rankDlg.close(); }, {passive:false});
+  $('rankLullabyBtn')   .addEventListener('click', e=>{ e.preventDefault(); openRanking('lullaby'); }, {passive:false});
+  $('closeRank')        .addEventListener('click', e=>{ e.preventDefault(); rankDlg.close(); }, {passive:false});
 
   // ===== 初期化 =====
   setMuted(false);

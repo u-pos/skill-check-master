@@ -76,7 +76,7 @@
     <div class="board" id="board">
       <canvas id="cv"></canvas>
       <button id="muteBtn" aria-label="ミュート切替">🔊</button>
-      <div id="welcome" class="welcome"><h2>君はGreat何連続出せるかな？</h2></div>
+      <div id="welcome" class="welcome"><h2>グレイト10連続出せるかな？</h2></div>
       <div id="overlay" class="overlay"><div class="ovtxt"></div></div>
     </div>
 
@@ -85,21 +85,21 @@
     <!-- スタート＋ランキング（通常） -->
     <div class="bar" id="btnBar">
       <button id="startBtn" class="btn">▶ スタート</button>
-      <button id="rankNormalBtn" class="btn">🏆（通常）</button>
+      <button id="rankNormalBtn" class="btn">🏆（通常モード）</button>
     </div>
 
     <!-- ララバイモード＋ランキング（ララバイ） -->
     <div id="lullabyWrap">
       <button id="lullabyBtn" class="btn">♪ ララバイモード</button>
-      <button id="rankLullabyBtn" class="btn">🏆（ララバイ）</button>
+      <button id="rankLullabyBtn" class="btn">🏆（ララバイモード）</button>
     </div>
   </div>
 
   <!-- ランキング -->
   <dialog id="rankDlg">
-    <div class="dlg-head" id="rankTitle">🏆 自己ランキングTOP5（通常）</div>
+    <div class="dlg-head" id="rankTitle">🏆 自己ランキングTOP5（通常モード）</div>
     <div class="dlg-body">
-      <table class="rank-list"><thead><tr><th>#</th><th>日付</th><th>Great連続</th></tr></thead><tbody id="rankTbody"></tbody></table>
+      <table class="rank-list"><thead><tr><th>#</th><th>日付</th><th>連続グレイト数</th></tr></thead><tbody id="rankTbody"></tbody></table>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin:10px 14px 14px"><button id="closeRank" class="btn">閉じる</button></div>
     </div>
   </dialog>
@@ -108,22 +108,22 @@
 (() => {
   // ===== 設定 =====
   const CONFIG = {
-    RPM: 60,                  // 針の回転速度
+    RPM: 60,                       // 針の回転速度
     COUNTDOWN_MS: 1200,
 
-    // 幅：Great は以前の 60%（0.06 → 0.036）
-    GOOD_RATIO  : 0.20,       // Good 幅（円周比）
-    GREAT_RATIO : 0.036,      // Great 幅（円周比）
+    GOOD_RATIO  : 0.20,            // Good 幅（円周比）
+    GREAT_RATIO : 0.036,           // Great 幅（円周比）≒以前の60%
 
     // 5時～10時（0=3時、角度増加＝時計回り）
     GREAT_CENTER_MIN_DEG: 60,
     GREAT_CENTER_MAX_DEG: 210,
 
     INPUT_CD_MS: 45,
-    UNLOCK_STREAK: 10,        // 10連続でララバイ解放
+    UNLOCK_STREAK: 10,             // 10連続でララバイ解放
 
-    SHOW_DELAY_AFTER_KAN_MS: 400, // 通常：ka-n再生→0.4s後に再表示
-    LULLABY_MIN_DELAY_MS: 400,    // ララバイ：0.4〜1.5秒ランダム
+    SUCCESS_PAUSE_MS: 1700,        // ★成功→次ラウンド待機：2.0s→1.7s
+    SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n再生→0.4s後に再表示
+    LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.5秒ランダム
     LULLABY_MAX_DELAY_MS: 1500
   };
 
@@ -140,6 +140,7 @@
   let phase='idle';            // 'idle' | 'countdown' | 'play' | 'pause'
   let streak=0, lastInputAt=0, rafId=0, isMuted=false;
   let mode='normal';           // 'normal' | 'lullaby'
+  let isEnding=false;          // 重複終了ガード
 
   const FULL=Math.PI*2;
 
@@ -194,7 +195,7 @@
     ka_n  : 'ka-n.mp3',    // ラウンド開始直前（通常のみ）
     batu  : 'batu.mp3',    // ミス音（Goodタップ／通過ミス）
     ex    : 'ex.mp3',      // Good/Great外TAP時
-    fanfare: 'fanfare.mp3' // 使ってないが残しておく
+    fanfare: 'fanfare.mp3' // 予備
   };
   const buf={}; const html={};
   Object.entries(SOUND_FILES).forEach(([key, file])=>{
@@ -218,15 +219,12 @@
 
   // ===== 角度／描画 =====
   const norm=a=>(a%FULL+FULL)%FULL;
+  const cwDelta=(from,to)=> (to - from + FULL) % FULL; // 時計回り量
 
-  // 時計回りの進み量（from→to のCW距離）
-  const cwDelta=(from,to)=> (to - from + FULL) % FULL;
-
-  // 時計回りで回す（角度“増加”）
   const angleAt = t => {
     const rps = CONFIG.RPM / 60;
     const d = (t - baseTime) / 1000;
-    return norm(baseAngle + rps * FULL * d);
+    return norm(baseAngle + rps * FULL * d); // 時計回り
   };
   const getCurrentAngle=t=>(phase==='play')?angleAt(t):frozenAngle;
 
@@ -280,7 +278,7 @@
     const greatW = FULL * CONFIG.GREAT_RATIO;
 
     const cdeg = randomIn(CONFIG.GREAT_CENTER_MIN_DEG, CONFIG.GREAT_CENTER_MAX_DEG);
-    const c = norm(deg2rad(cdeg)); // 中心角（時計回り）
+    const c = norm(deg2rad(cdeg)); // 中心角
 
     const bStart = norm(c - goodW/2);
     const bEnd   = norm(c + goodW/2);
@@ -369,6 +367,7 @@
 
   function startGame(which){
     mode=which; // 'normal' | 'lullaby'
+    isEnding=false;
     welcome.style.display='none';
     playSE('ready'); unlockAndWarmAudio(); // スタート直後に ready
     if(rafId) cancelAnimationFrame(rafId);
@@ -384,10 +383,16 @@
     // 成功中は通過判定を止める
     phase='pause';
 
+    // 成功演出：オーバーレイ「グレイト！」表示
+    overlay.classList.add('show');
+    overlay.querySelector('.ovtxt').textContent='グレイト！';
+
     showNeedle=false; showZones=false; draw(frozenAngle);
     placeZones(); // 次ラウンドのゾーンを先に更新
 
     setTimeout(()=>{
+      overlay.classList.remove('show');
+      overlay.querySelector('.ovtxt').textContent='';
       if(mode==='normal'){ playSE('ka_n'); } // ラウンド開始音
       const extra = (mode==='normal')
         ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
@@ -399,11 +404,11 @@
         startedGuard=true; // 再開直後の誤判定防止
         phase='play';
       }, extra);
-    }, 2000); // 2秒ポーズ
+    }, CONFIG.SUCCESS_PAUSE_MS);
   }
 
   function onTap(e){
-    if(phase!=='play') return;
+    if(phase!=='play' || isEnding) return;
     const now=tapTimestamp(e);
     if(now-lastInputAt<CONFIG.INPUT_CD_MS) return;
     lastInputAt=now;
@@ -413,29 +418,36 @@
     const inGood  = inArcCW(a, goodStart,  goodEnd);
 
     if(inGreat){
-      // 成功時のみ tap 音
-      playSE('tap');
+      playSE('tap');              // 成功時のみ tap
       streak++;
       if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); }
       endRoundAndQueueNext();
     }else if(inGood){
-      // Good に触れたタップは batu のみ
+      // Good に触れたTAPは batu
       gameOver('batu');
     }else{
-      // Good/Great 外は ex のみ
+      // ★Good/Great外は常に ex（位置に関わらず）
       gameOver('ex');
     }
   }
 
   function gameOver(soundKey='batu'){
-    // ミス音の指定に従って1つだけ鳴らす
-    if(soundKey){ playSE(soundKey); }
+    if(isEnding) return;
+    isEnding=true;
+
+    if(soundKey){ playSE(soundKey); } // 指定サウンドを1つだけ鳴らす
 
     stopGame(true);
     saveScore({score:streak, at:Date.now()});
     updateUnlockVisibility();
+
     overlay.classList.add('show');
-    overlay.querySelector('.ovtxt').textContent = `終了（Great連続 ${streak}）`;
+    overlay.querySelector('.ovtxt').textContent = '失敗';
+
+    // 2秒後に自動でランキング表示
+    setTimeout(()=>{
+      openRanking(mode==='lullaby' ? 'lullaby' : 'normal');
+    }, 2000);
   }
 
   function stopGame(keepOverlay){
@@ -447,8 +459,8 @@
   }
 
   // ===== ランキング =====
-  const KEY_NORMAL='rank_great_normal_v5';
-  const KEY_LULL  ='rank_great_lullaby_v5';
+  const KEY_NORMAL='rank_great_normal_v6';
+  const KEY_LULL  ='rank_great_lullaby_v6';
   function loadScores(key){ try{ return JSON.parse(localStorage.getItem(key)||'[]'); }catch{return []} }
   function saveScore(entry){
     if(entry.score<=0) return;
@@ -467,7 +479,7 @@
       const tr=document.createElement('tr'); tr.innerHTML=`<td>${i+1}</td><td>${date}</td><td>${e.score}</td>`;
       rankTbody.appendChild(tr);
     });
-    rankTitle.textContent=(which==='lullaby')?'🏆 自己ランキングTOP5（ララバイ）':'🏆 自己ランキングTOP5（通常）';
+    rankTitle.textContent=(which==='lullaby')?'🏆 自己ランキングTOP5（ララバイモード）':'🏆 自己ランキングTOP5（通常モード）';
     rankDlg.showModal();
   }
 

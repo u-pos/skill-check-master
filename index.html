@@ -108,7 +108,7 @@
 (() => {
   // ===== 設定 =====
   const CONFIG = {
-    RPM: 60,                  // 針の回転速度（初期版と同じ体感）
+    RPM: 60,                  // 針の回転速度
     COUNTDOWN_MS: 1200,
 
     // 幅：Great は以前の 60%（0.06 → 0.036）
@@ -123,7 +123,7 @@
     UNLOCK_STREAK: 10,        // 10連続でララバイ解放
 
     SHOW_DELAY_AFTER_KAN_MS: 400, // 通常：ka-n再生→0.4s後に再表示
-    LULLABY_MIN_DELAY_MS: 400,    // ララバイ：0.4〜1.5sランダム
+    LULLABY_MIN_DELAY_MS: 400,    // ララバイ：0.4〜1.5秒ランダム
     LULLABY_MAX_DELAY_MS: 1500
   };
 
@@ -139,7 +139,7 @@
   // ===== 状態 =====
   let phase='idle';            // 'idle' | 'countdown' | 'play' | 'pause'
   let streak=0, lastInputAt=0, rafId=0, isMuted=false;
-  let mode='normal'; // 'normal' | 'lullaby'
+  let mode='normal';           // 'normal' | 'lullaby'
 
   const FULL=Math.PI*2;
 
@@ -187,13 +187,14 @@
   // ===== サウンド =====
   const AudioCtx=window.AudioContext||window.webkitAudioContext;
   let actx=null,gMaster=null;
-  // キー名はJSの識別子、ファイル名は実ファイルに合わせる
+
   const SOUND_FILES = {
-    tap  : 'tap.mp3',
-    ready: 'ready.mp3',
-    ka_n : 'ka-n.mp3',   // ← ハイフン付きファイル名に対応
-    batu : 'batu.mp3',
-    fanfare: 'fanfare.mp3'
+    tap   : 'tap.mp3',     // Great成功時のTAPのみ
+    ready : 'ready.mp3',   // スタート直後
+    ka_n  : 'ka-n.mp3',    // ラウンド開始直前（通常のみ）
+    batu  : 'batu.mp3',    // ミス音（Goodタップ／通過ミス）
+    ex    : 'ex.mp3',      // Good/Great外TAP時
+    fanfare: 'fanfare.mp3' // 使ってないが残しておく
   };
   const buf={}; const html={};
   Object.entries(SOUND_FILES).forEach(([key, file])=>{
@@ -306,7 +307,7 @@
         const movedCW = cwDelta(lastAngle, ang);
         const toGoodEnd = cwDelta(lastAngle, goodEnd);
         if (movedCW > EPS && toGoodEnd > EPS && movedCW > toGoodEnd){
-          gameOver();
+          gameOver('batu'); // 自動ミスは batu
           return;
         }
       }
@@ -339,10 +340,23 @@
       if(now>=end){
         overlay.classList.remove('show');
         overlay.querySelector('.ovtxt').textContent='';
-        setNeedleAt12(now);
-        phase='play'; tapBtn.disabled=false;
-        showNeedle=true; showZones=true;
-        startedGuard=true;
+        // 初回ラウンド開始：通常はka-n→0.4s後、ララバイはランダム遅延で開始
+        phase='pause';
+        const startAfter = ()=>{
+          const t=performance.now();
+          setNeedleAt12(t);
+          showNeedle=true; showZones=true; draw(frozenAngle);
+          startedGuard=true;
+          phase='play';
+          tapBtn.disabled=false;
+        };
+        if(mode==='normal'){
+          playSE('ka_n');
+          setTimeout(startAfter, CONFIG.SHOW_DELAY_AFTER_KAN_MS);
+        }else{
+          const rnd = Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
+          setTimeout(startAfter, rnd);
+        }
         return;
       }
       if(now>=mid){
@@ -356,7 +370,7 @@
   function startGame(which){
     mode=which; // 'normal' | 'lullaby'
     welcome.style.display='none';
-    playSE('ready'); unlockAndWarmAudio();
+    playSE('ready'); unlockAndWarmAudio(); // スタート直後に ready
     if(rafId) cancelAnimationFrame(rafId);
     streak=0;
     showNeedle=false; showZones=true;
@@ -367,14 +381,14 @@
 
   // Great 成功ラウンド終了→次ラウンド
   function endRoundAndQueueNext(){
-    // ★成功中は通過判定を止める
+    // 成功中は通過判定を止める
     phase='pause';
 
     showNeedle=false; showZones=false; draw(frozenAngle);
     placeZones(); // 次ラウンドのゾーンを先に更新
 
     setTimeout(()=>{
-      if(mode==='normal'){ playSE('ka_n'); } // ← ka-n.mp3 を確実に再生
+      if(mode==='normal'){ playSE('ka_n'); } // ラウンド開始音
       const extra = (mode==='normal')
         ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
         : Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
@@ -382,8 +396,8 @@
         const t=performance.now();
         setNeedleAt12(t);
         showNeedle=true; showZones=true; draw(frozenAngle);
-        startedGuard=true;       // 再開直後の誤判定防止
-        phase='play';            // ★ここで再び判定を有効化
+        startedGuard=true; // 再開直後の誤判定防止
+        phase='play';
       }, extra);
     }, 2000); // 2秒ポーズ
   }
@@ -394,27 +408,29 @@
     if(now-lastInputAt<CONFIG.INPUT_CD_MS) return;
     lastInputAt=now;
 
-    playSE('tap'); // TAP 音
-
     const a=angleAt(now);
     const inGreat = inArcCW(a, greatStart, greatEnd);
     const inGood  = inArcCW(a, goodStart,  goodEnd);
 
     if(inGreat){
+      // 成功時のみ tap 音
+      playSE('tap');
       streak++;
       if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); }
       endRoundAndQueueNext();
     }else if(inGood){
-      // Good に触れたタップはミス
-      gameOver();
+      // Good に触れたタップは batu のみ
+      gameOver('batu');
     }else{
-      // Good未満のタップもミス
-      gameOver();
+      // Good/Great 外は ex のみ
+      gameOver('ex');
     }
   }
 
-  function gameOver(){
-    playSE('batu'); // ← ミス音
+  function gameOver(soundKey='batu'){
+    // ミス音の指定に従って1つだけ鳴らす
+    if(soundKey){ playSE(soundKey); }
+
     stopGame(true);
     saveScore({score:streak, at:Date.now()});
     updateUnlockVisibility();
@@ -431,8 +447,8 @@
   }
 
   // ===== ランキング =====
-  const KEY_NORMAL='rank_great_normal_v4';
-  const KEY_LULL  ='rank_great_lullaby_v4';
+  const KEY_NORMAL='rank_great_normal_v5';
+  const KEY_LULL  ='rank_great_lullaby_v5';
   function loadScores(key){ try{ return JSON.parse(localStorage.getItem(key)||'[]'); }catch{return []} }
   function saveScore(entry){
     if(entry.score<=0) return;

@@ -90,7 +90,7 @@
 
     <!-- ララバイモード＋ランキング（ララバイ） -->
     <div id="lullabyWrap">
-      <button id="lullabyBtn" class="btn">♪ ララバイモード</button>
+      <button id="lullabyBtn" class="btn">ララバイモード</button>
       <button id="rankLullabyBtn" class="btn">🏆 ララバイ</button>
     </div>
   </div>
@@ -197,14 +197,15 @@
   const AudioCtx=window.AudioContext||window.webkitAudioContext;
   let actx=null,gMaster=null;
 
-  const SOUND_FILES = {
-    tap   : 'tap.mp3',     // Great成功時のTAPのみ
-    ready : 'ready.mp3',   // スタート直後
-    ka_n  : 'ka-n.mp3',    // ラウンド開始直前（通常のみ）
-    batu  : 'batu.mp3',    // ミス音（Goodタップ）
-    ex    : 'ex.mp3',      // Good/Great外TAP & 自動ミス
-    fanfare: 'fanfare.mp3' // 予備
-  };
+const SOUND_FILES = {
+  tap   : 'tap.mp3',
+  ready : 'ready.mp3',
+  ka_n  : 'ka-n.mp3',
+  batu  : 'batu.mp3',
+  ex    : 'ex.mp3',
+  fanfare: 'fanfare.mp3',
+  cong  : 'cong.mp3',          // ← これを追加
+};
   const buf={}; const html={};
   Object.entries(SOUND_FILES).forEach(([key, file])=>{
     const a=new Audio(file); a.preload='auto'; a.playsInline=true; html[key]=a; buf[key]=null;
@@ -476,16 +477,20 @@
     const inGood  = inArcCW(a, goodStart,  goodEnd);
     const grace   = isGraceGreat(a);
 
-    if(inGreat || grace){
-      playSE('tap');
-      streak++;
-      if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); }
+    if (inGreat || grace) {
+  playSE('tap');
+  streak++;
 
-      lastSuccessAngle = a;
-      lastSuccessWasGrace = !inGreat && grace;
+  if (streak === CONFIG.UNLOCK_STREAK) {
+    playSE('cong');          // ★10回達成の瞬間に鳴らす（通常・ララバイ共通）
+    unlockLullaby();         // 既存処理（通常モードではアンロック、ララバイ時は既に1でもOK）
+  }
 
-      endRoundAndQueueNext();
-    }else if(inGood){
+  lastSuccessAngle = a;
+  lastSuccessWasGrace = !inGreat && grace;
+
+  endRoundAndQueueNext();
+}else if(inGood){
       gameOver('batu');
     }else{
       gameOver('ex');

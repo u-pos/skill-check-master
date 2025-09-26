@@ -82,16 +82,16 @@
 
     <div class="tap-row" id="tapRow"><button id="tapBtn" disabled>TAP</button></div>
 
-     <!-- スタート＋ランキング（通常） -->
+    <!-- スタート＋ランキング（通常） -->
     <div class="bar" id="btnBar">
       <button id="startBtn" class="btn">▶ スタート</button>
-      <button id="rankNormalBtn" class="btn">🏆通常モード</button>
+      <button id="rankNormalBtn" class="btn">🏆（通常）</button>
     </div>
 
     <!-- ララバイモード＋ランキング（ララバイ） -->
     <div id="lullabyWrap">
-      <button id="lullabyBtn" class="btn">ララバイモード</button>
-      <button id="rankLullabyBtn" class="btn">🏆ララバイ</button>
+      <button id="lullabyBtn" class="btn">♪ ララバイモード</button>
+      <button id="rankLullabyBtn" class="btn">🏆（ララバイモード）</button>
     </div>
   </div>
 
@@ -125,7 +125,10 @@
     SUCCESS_FREEZE_VISIBLE_MS: 300,// 成功直後の静止表示：0.3s（針＆ゾーン見せたまま）
     SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n→0.4s後に再表示
     LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.3秒
-    LULLABY_MAX_DELAY_MS: 1300 
+    LULLABY_MAX_DELAY_MS: 1300,
+
+    // ★おまけグレイト：Great終端を“時計回りに”超えても成功にする許容角（度）
+    GREAT_OVERSHOOT_GRACE_DEG: 6   // 調整用（例：6度）
   };
 
   // ===== 要素 =====
@@ -161,6 +164,10 @@
   let lastAngle=null;
   let startedGuard=false;        // 開始直後1フレームは通過判定を無効化
   const EPS=1e-4;
+
+  // 成功時の表示制御（今回追加）
+  let lastSuccessAngle = null;       // 実際に止めた角度
+  let lastSuccessWasGrace = false;   // おまけグレイトだったか
 
   // ===== レイアウト =====
   function visualH(){ return (window.visualViewport?.height) || window.innerHeight; }
@@ -273,7 +280,7 @@
   }
   function randomIn(min,max){ return min + Math.random()*(max-min); }
 
-  // 表示用：角度 a を時計回り弧 s→e 内にクランプ（Great端へ吸着）
+  // 表示用：角度 a を時計回り弧 s→e 内にクランプ（必要なときだけ使用）
   function clampAngleToArc(a, s, e){
     let ss = s, ee = e, aa = a;
     if (ee < ss) ee += FULL;
@@ -304,6 +311,16 @@
 
   // 角度 a が「時計回りの弧 s→e」に含まれるか
   function inArcCW(a,s,e){ return (s<=e) ? (a>=s && a<=e) : (a>=s || a<=e); }
+
+  // ★“おまけグレイト”判定（Great終端を少し時計回りに超えているか）
+  function isGraceGreat(a){
+    const grace = deg2rad(CONFIG.GREAT_OVERSHOOT_GRACE_DEG);
+    // Great内なら false（通常成功として扱う）
+    if (inArcCW(a, greatStart, greatEnd)) return false;
+    // greatEnd から a までの時計回り差分が grace 以下なら“おまけ”
+    const over = cwDelta(greatEnd, a);
+    return over > 0 && over <= grace;
+  }
 
   // ===== ループ（“最初にグッドゾーンを通り越した”瞬間にミス） =====
   function loop(now){
@@ -337,6 +354,9 @@
   function setupInitial(){
     placeZones();
     resizeCanvas();
+    // 成功情報のリセット
+    lastSuccessAngle = null;
+    lastSuccessWasGrace = false;
   }
 
   function showCountdown(){
@@ -392,23 +412,22 @@
     rafId=requestAnimationFrame(loop);
   }
 
-  // ★ 修正：フリーズ中も「グレイト！」を表示し、針は Great 弧の端にクランプ表示
+  // 成功後（Great）→ 次ラウンド準備
   function endRoundAndQueueNext(){
     phase='pause';
 
-    // 現在角度を取得し、表示用は Great 範囲へクランプ（“おまけグレイト”対策）
-    const now = performance.now();
-    const curAngle = angleAt(now);
-    const displayAngle = clampAngleToArc(curAngle, greatStart, greatEnd);
-
-
-
-    // ① フリーズ前に「グレイト！」を出す（→ フリーズ中も表示される）
+    // ① 「グレイト！」はフリーズ前に表示（フリーズ中も見せる）
     overlay.classList.add('show');
     overlay.querySelector('.ovtxt').style.color = 'yellow';
     overlay.querySelector('.ovtxt').textContent='グレイト！';
 
-    // ② フリーズ：針＆ゾーンは見せたまま、針は Great の端（or 内部）に固定表示
+    // ② フリーズ中の針表示：通常は止めた角度のまま／おまけのときだけ境目へ吸着
+    const now = performance.now();
+    const curAngle = angleAt(now);
+    // 安全策：lastSuccessAngle 未設定時は現在角度を採用
+    const displayAngle =
+      (lastSuccessWasGrace ? norm(greatEnd) : (lastSuccessAngle ?? curAngle));
+
     frozenAngle = displayAngle;
     showNeedle = true;
     showZones  = true;
@@ -417,7 +436,6 @@
     const freeze = CONFIG.SUCCESS_FREEZE_VISIBLE_MS;               // 0.3s
     const remain = Math.max(0, CONFIG.SUCCESS_PAUSE_MS - freeze);  // 残り（1.0s など）
 
-    // フリーズ後も少し演出してから次ラウンド準備（テキストはこの間も表示のまま）
     setTimeout(()=>{
       // ③ 成功演出：ゾーン隠し・次ラウンドのゾーン計算
       showNeedle=false;
@@ -459,17 +477,23 @@
     const a=angleAt(now);
     const inGreat = inArcCW(a, greatStart, greatEnd);
     const inGood  = inArcCW(a, goodStart,  goodEnd);
+    const grace   = isGraceGreat(a);
 
-    if(inGreat){
-      playSE('tap');              // 成功時のみ tap
+    if(inGreat || grace){
+      // 成功：通常 or おまけグレイト
+      playSE('tap');
       streak++;
       if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); }
+
+      lastSuccessAngle = a;            // 実際の停止角
+      lastSuccessWasGrace = !inGreat && grace; // おまけかどうか
+
       endRoundAndQueueNext();
     }else if(inGood){
-      // Good に触れたTAPは batu
+      // Good に触れた TAP は失敗（おまけ条件に該当しない場合）
       gameOver('batu');
     }else{
-      // Good/Great外は常に ex（どの位置でも）
+      // Good/Great外は常に ex
       gameOver('ex');
     }
   }
@@ -484,7 +508,7 @@
     saveScore({score:streak, at:Date.now()});
     updateUnlockVisibility();
 
-    // ★ 10回以上でミス → 特別メッセージ（黄色）
+    // 10回以上でミス → 特別メッセージ（黄色）
     overlay.classList.add('show');
     const ov = overlay.querySelector('.ovtxt');
     if (streak >= 10) {

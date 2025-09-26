@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>怒涛の嵐マスター</title>
+<title>スキチェマスターへの道</title> 
 <style>
   :root{ --bg:#0f1115; --fg:#eaeef2; }
   html,body{
@@ -33,7 +33,7 @@
 
   .welcome{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;z-index:2;
     text-align:center;background:rgba(0,0,0,.25)}
-  .welcome h2{margin:0;font-size:clamp(26px,8vw,46px);font-weight:900;color:#c8ffe0;transform: translateY(40%);}
+  .welcome h2{margin:0;font-size:clamp(24px,7vw,43px);font-weight:900;color:#c8ffe0;transform: translateY(50%);} 
 
   .tap-row{width:100%;max-width:820px;margin-top:2px;display:flex;justify-content:center}
   #tapBtn{
@@ -70,7 +70,7 @@
 </style>
 </head>
 <body>
-  <header class="title" id="hdr"><h1>怒涛の嵐マスター THE GAME</h1></header>
+  <header class="title" id="hdr"><h1>スキチェマスターへの道</h1></header> 
 
   <div class="wrap">
     <div class="board" id="board">
@@ -112,7 +112,7 @@
     COUNTDOWN_MS: 1200,
 
     GOOD_RATIO  : 0.20,            // Good 幅（円周比）
-    GREAT_RATIO : 0.039,           // Great 幅（円周比）
+    GREAT_RATIO : 0.040,           // Great 幅（円周比） 
 
     // 5時～10時（0=3時、角度増加＝時計回り）
     GREAT_CENTER_MIN_DEG: 70,
@@ -122,10 +122,10 @@
     UNLOCK_STREAK: 10,             // 10連続でララバイ解放
 
     SUCCESS_PAUSE_MS: 1300,        // ★成功→次ラウンド待機：1.3s（この中の最初の0.3sは静止表示）
-    SUCCESS_FREEZE_VISIBLE_MS: 300,// ★成功直後の静止表示時間（針＆ゾーンは見せたまま）
+    SUCCESS_FREEZE_VISIBLE_MS: 300,// ★成功直後の静止表示時間（針＆ゾーンは見せたまま） 
     SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n再生→0.4s後に再表示
-    LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.5秒ランダム
-    LULLABY_MAX_DELAY_MS: 1500
+    LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.3秒ランダム 
+    LULLABY_MAX_DELAY_MS: 1300 
   };
 
   // ===== 要素 =====

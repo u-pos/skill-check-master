@@ -137,7 +137,8 @@
   const rankDlg=$('rankDlg'), rankTbody=$('rankTbody'), rankTitle=$('rankTitle'), closeRank=$('closeRank');
 
   // ===== 状態 =====
-  let phase='idle', streak=0, lastInputAt=0, rafId=0, isMuted=false;
+  let phase='idle';            // 'idle' | 'countdown' | 'play' | 'pause'
+  let streak=0, lastInputAt=0, rafId=0, isMuted=false;
   let mode='normal'; // 'normal' | 'lullaby'
 
   const FULL=Math.PI*2;
@@ -186,13 +187,27 @@
   // ===== サウンド =====
   const AudioCtx=window.AudioContext||window.webkitAudioContext;
   let actx=null,gMaster=null;
-  const buf={tap:null,ready:null,kan:null,bomb:null,fanfare:null};
-  const html={};['tap','ready','kan','bomb','fanfare'].forEach(k=>{const a=new Audio(`${k}.mp3`);a.preload='auto';a.playsInline=true;html[k]=a;});
+  // キー名はJSの識別子、ファイル名は実ファイルに合わせる
+  const SOUND_FILES = {
+    tap  : 'tap.mp3',
+    ready: 'ready.mp3',
+    ka_n : 'ka-n.mp3',   // ← ハイフン付きファイル名に対応
+    batu : 'batu.mp3',
+    fanfare: 'fanfare.mp3'
+  };
+  const buf={}; const html={};
+  Object.entries(SOUND_FILES).forEach(([key, file])=>{
+    const a=new Audio(file); a.preload='auto'; a.playsInline=true; html[key]=a; buf[key]=null;
+  });
+
   async function unlockAndWarmAudio(){
     try{
       if(!actx){ actx=new AudioCtx({latencyHint:'interactive'}); gMaster=actx.createGain(); gMaster.gain.value=isMuted?0:1; gMaster.connect(actx.destination); }
       if(actx.state==='suspended') await actx.resume();
-      await Promise.all(Object.keys(buf).map(async k=>{ if(buf[k]) return; const res=await fetch(`${k}.mp3`); const ab=await res.arrayBuffer(); buf[k]=await actx.decodeAudioData(ab); }));
+      await Promise.all(Object.entries(SOUND_FILES).map(async ([key,file])=>{
+        if(buf[key]) return;
+        const res=await fetch(file); const ab=await res.arrayBuffer(); buf[key]=await actx.decodeAudioData(ab);
+      }));
     }catch{}
   }
   function setMuted(m){ isMuted=m; if(gMaster) gMaster.gain.value=m?0:1; Object.values(html).forEach(a=>a.muted=m); muteBtn.textContent=m?'🔇':'🔊'; }
@@ -232,7 +247,7 @@
       ctx.arc(CX,CY,r,greatStart,greatEnd); ctx.stroke();
     }
 
-    // 針（Y=CY + r*sin）
+    // 針
     if(showNeedle){
       const fx=CX + r*1.2*Math.cos(angle);
       const fy=CY + r*1.2*Math.sin(angle);
@@ -266,12 +281,10 @@
     const cdeg = randomIn(CONFIG.GREAT_CENTER_MIN_DEG, CONFIG.GREAT_CENTER_MAX_DEG);
     const c = norm(deg2rad(cdeg)); // 中心角（時計回り）
 
-    // 時計回りに start→end でグッド弧を敷く
     const bStart = norm(c - goodW/2);
     const bEnd   = norm(c + goodW/2);
 
-    // ★Great は「進入側＝bStart」に接する（右端／先頭）
-    const gStart = bStart;
+    const gStart = bStart;             // 進入側（先頭）
     const gEnd   = norm(gStart + greatW);
 
     goodStart=bStart; goodEnd=bEnd;
@@ -290,12 +303,8 @@
       if (startedGuard){          // 開始直後の誤判定ガード
         startedGuard=false;
       } else {
-        // 直前→現在の時計回り移動量
         const movedCW = cwDelta(lastAngle, ang);
-        // 直前位置→グッド終端（bEnd）までの時計回り距離
         const toGoodEnd = cwDelta(lastAngle, goodEnd);
-
-        // 「グッドの終端」を“通り越した”らミス（=最初にグッドを通過しきった瞬間）
         if (movedCW > EPS && toGoodEnd > EPS && movedCW > toGoodEnd){
           gameOver();
           return;
@@ -333,7 +342,6 @@
         setNeedleAt12(now);
         phase='play'; tapBtn.disabled=false;
         showNeedle=true; showZones=true;
-        // 初回フレームは通過判定スキップ
         startedGuard=true;
         return;
       }
@@ -359,11 +367,14 @@
 
   // Great 成功ラウンド終了→次ラウンド
   function endRoundAndQueueNext(){
+    // ★成功中は通過判定を止める
+    phase='pause';
+
     showNeedle=false; showZones=false; draw(frozenAngle);
-    placeZones(); // 先に次ラウンドのゾーンを更新
+    placeZones(); // 次ラウンドのゾーンを先に更新
 
     setTimeout(()=>{
-      if(mode==='normal'){ playSE('kan'); }
+      if(mode==='normal'){ playSE('ka_n'); } // ← ka-n.mp3 を確実に再生
       const extra = (mode==='normal')
         ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
         : Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
@@ -371,7 +382,8 @@
         const t=performance.now();
         setNeedleAt12(t);
         showNeedle=true; showZones=true; draw(frozenAngle);
-        startedGuard=true; // 再開直後の誤判定防止
+        startedGuard=true;       // 再開直後の誤判定防止
+        phase='play';            // ★ここで再び判定を有効化
       }, extra);
     }, 2000); // 2秒ポーズ
   }
@@ -393,16 +405,16 @@
       if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); }
       endRoundAndQueueNext();
     }else if(inGood){
-      // Good に触れたタップも終了（“通り越し”とは別軸でのミス）
+      // Good に触れたタップはミス
       gameOver();
     }else{
-      // それ以外もミス
+      // Good未満のタップもミス
       gameOver();
     }
   }
 
   function gameOver(){
-    playSE('bomb');
+    playSE('batu'); // ← ミス音
     stopGame(true);
     saveScore({score:streak, at:Date.now()});
     updateUnlockVisibility();
@@ -419,8 +431,8 @@
   }
 
   // ===== ランキング =====
-  const KEY_NORMAL='rank_great_normal_v3';
-  const KEY_LULL  ='rank_great_lullaby_v3';
+  const KEY_NORMAL='rank_great_normal_v4';
+  const KEY_LULL  ='rank_great_lullaby_v4';
   function loadScores(key){ try{ return JSON.parse(localStorage.getItem(key)||'[]'); }catch{return []} }
   function saveScore(entry){
     if(entry.score<=0) return;

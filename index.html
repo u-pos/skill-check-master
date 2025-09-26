@@ -399,7 +399,8 @@
     // 現在角度を取得し、表示用は Great 範囲へクランプ
     const now = performance.now();
     const curAngle = angleAt(now);
-    const displayAngle = clampAngleToArc(curAngle, greatStart, greatEnd);
+    const displayAngle = norm(greatEnd); // グッドとグレイトの境目に固定
+
 
     // ① フリーズ前に「グレイト！」を出す（→ フリーズ中も表示される）
     overlay.classList.add('show');

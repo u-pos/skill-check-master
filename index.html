@@ -85,7 +85,7 @@
     <!-- スタート＋ランキング（通常） -->
     <div class="bar" id="btnBar">
       <button id="startBtn" class="btn">▶ スタート</button>
-      <button id="rankNormalBtn" class="btn">🏆（通常モード）</button>
+      <button id="rankNormalBtn" class="btn">🏆（通常）</button>
     </div>
 
     <!-- ララバイモード＋ランキング（ララバイ） -->
@@ -112,7 +112,7 @@
     COUNTDOWN_MS: 1200,
 
     GOOD_RATIO  : 0.20,            // Good 幅（円周比）
-    GREAT_RATIO : 0.036,           // Great 幅（円周比）≒以前の60%
+    GREAT_RATIO : 0.036,           // Great 幅（円周比）
 
     // 5時～10時（0=3時、角度増加＝時計回り）
     GREAT_CENTER_MIN_DEG: 60,
@@ -121,7 +121,7 @@
     INPUT_CD_MS: 45,
     UNLOCK_STREAK: 10,             // 10連続でララバイ解放
 
-    SUCCESS_PAUSE_MS: 1700,        // ★成功→次ラウンド待機：2.0s→1.7s
+    SUCCESS_PAUSE_MS: 1700,        // 成功→次ラウンド待機：1.7s
     SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n再生→0.4s後に再表示
     LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.5秒ランダム
     LULLABY_MAX_DELAY_MS: 1500
@@ -193,8 +193,8 @@
     tap   : 'tap.mp3',     // Great成功時のTAPのみ
     ready : 'ready.mp3',   // スタート直後
     ka_n  : 'ka-n.mp3',    // ラウンド開始直前（通常のみ）
-    batu  : 'batu.mp3',    // ミス音（Goodタップ／通過ミス）
-    ex    : 'ex.mp3',      // Good/Great外TAP時
+    batu  : 'batu.mp3',    // ミス音（Goodタップ）
+    ex    : 'ex.mp3',      // Good/Great外TAP & 自動ミス
     fanfare: 'fanfare.mp3' // 予備
   };
   const buf={}; const html={};
@@ -305,7 +305,8 @@
         const movedCW = cwDelta(lastAngle, ang);
         const toGoodEnd = cwDelta(lastAngle, goodEnd);
         if (movedCW > EPS && toGoodEnd > EPS && movedCW > toGoodEnd){
-          gameOver('batu'); // 自動ミスは batu
+          // ★何も押さずにGoodを通過 → 自動ミスは ex.mp3
+          gameOver('ex');
           return;
         }
       }
@@ -328,6 +329,7 @@
 
   function showCountdown(){
     overlay.classList.add('show');
+    overlay.querySelector('.ovtxt').style.color = 'yellow';
     overlay.querySelector('.ovtxt').textContent='Ready';
     tapBtn.disabled=true; phase='countdown';
     showNeedle=false; showZones=true; draw(frozenAngle);
@@ -383,8 +385,9 @@
     // 成功中は通過判定を止める
     phase='pause';
 
-    // 成功演出：オーバーレイ「グレイト！」表示
+    // 成功演出：オーバーレイ「グレイト！」表示（黄色）
     overlay.classList.add('show');
+    overlay.querySelector('.ovtxt').style.color = 'yellow';
     overlay.querySelector('.ovtxt').textContent='グレイト！';
 
     showNeedle=false; showZones=false; draw(frozenAngle);
@@ -426,7 +429,7 @@
       // Good に触れたTAPは batu
       gameOver('batu');
     }else{
-      // ★Good/Great外は常に ex（位置に関わらず）
+      // Good/Great外は常に ex（どの位置でも）
       gameOver('ex');
     }
   }
@@ -441,13 +444,11 @@
     saveScore({score:streak, at:Date.now()});
     updateUnlockVisibility();
 
+    // 失敗表示は白
     overlay.classList.add('show');
-    overlay.querySelector('.ovtxt').textContent = '失敗';
-
-    // 2秒後に自動でランキング表示
-    setTimeout(()=>{
-      openRanking(mode==='lullaby' ? 'lullaby' : 'normal');
-    }, 2000);
+    const ov = overlay.querySelector('.ovtxt');
+    ov.style.color = '#ffffff';
+    ov.textContent = '失敗';
   }
 
   function stopGame(keepOverlay){

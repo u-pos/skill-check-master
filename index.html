@@ -63,7 +63,7 @@
   #lullabyBtn{display:none;background:#a855f7;border-color:#6d28d9}
   #rankLullabyBtn{display:none}
 
-  dialog{border:none;border-radius:12px;padding:0;max-width:520px;width:90vw;background:#0f131a;color:#fff}
+  dialog{border:none;border-radius:12px;padding:0;max-width:520px;width:90vw;background:#0f111a;color:#fff}
   .dlg-head{padding:12px 14px;border-bottom:1px solid #253040;font-weight:700}
   .rank-list{width:100%;border-collapse:collapse}
   .rank-list th,.rank-list td{padding:8px 6px;border-bottom:1px solid #1d2533;text-align:left}
@@ -76,7 +76,7 @@
     <div class="board" id="board">
       <canvas id="cv"></canvas>
       <button id="muteBtn" aria-label="ミュート切替">🔊</button>
-      <div id="welcome" class="welcome"><h2>グレイト10連続出せるかな？</h2></div>
+      <div id="welcome" class="welcome"><h2>目指せグレイト10連続！</h2></div>
       <div id="overlay" class="overlay"><div class="ovtxt"></div></div>
     </div>
 
@@ -112,16 +112,17 @@
     COUNTDOWN_MS: 1200,
 
     GOOD_RATIO  : 0.20,            // Good 幅（円周比）
-    GREAT_RATIO : 0.036,           // Great 幅（円周比）
+    GREAT_RATIO : 0.039,           // Great 幅（円周比）
 
     // 5時～10時（0=3時、角度増加＝時計回り）
-    GREAT_CENTER_MIN_DEG: 60,
-    GREAT_CENTER_MAX_DEG: 210,
+    GREAT_CENTER_MIN_DEG: 70,
+    GREAT_CENTER_MAX_DEG: 220,
 
     INPUT_CD_MS: 45,
     UNLOCK_STREAK: 10,             // 10連続でララバイ解放
 
-    SUCCESS_PAUSE_MS: 1700,        // 成功→次ラウンド待機：1.7s
+    SUCCESS_PAUSE_MS: 1300,        // ★成功→次ラウンド待機：1.3s（この中の最初の0.3sは静止表示）
+    SUCCESS_FREEZE_VISIBLE_MS: 300,// ★成功直後の静止表示時間（針＆ゾーンは見せたまま）
     SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n再生→0.4s後に再表示
     LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.5秒ランダム
     LULLABY_MAX_DELAY_MS: 1500
@@ -305,7 +306,7 @@
         const movedCW = cwDelta(lastAngle, ang);
         const toGoodEnd = cwDelta(lastAngle, goodEnd);
         if (movedCW > EPS && toGoodEnd > EPS && movedCW > toGoodEnd){
-          // ★何も押さずにGoodを通過 → 自動ミスは ex.mp3
+          // 何も押さずにGoodを通過 → 自動ミスは ex.mp3
           gameOver('ex');
           return;
         }
@@ -380,34 +381,45 @@
     rafId=requestAnimationFrame(loop);
   }
 
-  // Great 成功ラウンド終了→次ラウンド
+  // Great 成功ラウンド終了→次ラウンド（0.3秒は表示のまま静止→残りは演出）
   function endRoundAndQueueNext(){
-    // 成功中は通過判定を止める
     phase='pause';
 
-    // 成功演出：オーバーレイ「グレイト！」表示（黄色）
-    overlay.classList.add('show');
-    overlay.querySelector('.ovtxt').style.color = 'yellow';
-    overlay.querySelector('.ovtxt').textContent='グレイト！';
+    // 現在角度で固定して 0.3s 静止（針＆ゾーンは見せたまま）
+    const now = performance.now();
+    frozenAngle = angleAt(now);
+    showNeedle = true;
+    showZones  = true;
+    draw(frozenAngle);
 
-    showNeedle=false; showZones=false; draw(frozenAngle);
-    placeZones(); // 次ラウンドのゾーンを先に更新
+    const freeze = CONFIG.SUCCESS_FREEZE_VISIBLE_MS;               // 0.3s
+    const remain = Math.max(0, CONFIG.SUCCESS_PAUSE_MS - freeze);  // 1.0s
 
     setTimeout(()=>{
-      overlay.classList.remove('show');
-      overlay.querySelector('.ovtxt').textContent='';
-      if(mode==='normal'){ playSE('ka_n'); } // ラウンド開始音
-      const extra = (mode==='normal')
-        ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
-        : Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
+      // 成功演出：「グレイト！」（黄色）を表示し、以降は非表示にして次準備
+      overlay.classList.add('show');
+      overlay.querySelector('.ovtxt').style.color = 'yellow';
+      overlay.querySelector('.ovtxt').textContent='グレイト！';
+
+      showNeedle=false; showZones=false; draw(frozenAngle);
+      placeZones(); // 次ラウンドのゾーンを先に更新
+
       setTimeout(()=>{
-        const t=performance.now();
-        setNeedleAt12(t);
-        showNeedle=true; showZones=true; draw(frozenAngle);
-        startedGuard=true; // 再開直後の誤判定防止
-        phase='play';
-      }, extra);
-    }, CONFIG.SUCCESS_PAUSE_MS);
+        overlay.classList.remove('show');
+        overlay.querySelector('.ovtxt').textContent='';
+        if(mode==='normal'){ playSE('ka_n'); } // ラウンド開始音
+        const extra = (mode==='normal')
+          ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
+          : Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
+        setTimeout(()=>{
+          const t=performance.now();
+          setNeedleAt12(t);
+          showNeedle=true; showZones=true; draw(frozenAngle);
+          startedGuard=true; // 再開直後の誤判定防止
+          phase='play';
+        }, extra);
+      }, remain);
+    }, freeze);
   }
 
   function onTap(e){

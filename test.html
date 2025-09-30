@@ -29,7 +29,7 @@
   .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:3;font-weight:900;
     font-size:clamp(26px,7.5vw,52px);background:rgba(0,0,0,.25);backdrop-filter:saturate(120%) blur(1px);text-align:center}
   .overlay.show{display:flex}
-  .overlay .ovtxt { display:inline-block; transform: translateY(30%); color: yellow; line-height:1; }
+  .overlay .ovtxt { display:inline-block; color: yellow; line-height:1; }
 
   .welcome{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;z-index:2;
     text-align:center;background:rgba(0,0,0,.25)}
@@ -126,9 +126,10 @@
     LULLABY_MIN_DELAY_MS: 400,
     LULLABY_MAX_DELAY_MS: 1300,
 
-    GREAT_OVERSHOOT_GRACE_DEG: 4,
+    // ★ おまけグレイトをより狭く
+    GREAT_OVERSHOOT_GRACE_DEG: 2,
 
-    // 見た目スケール（円、針、フォント位置などを0.6倍）
+    // 見た目スケール
     DRAW_SCALE: 0.6
   };
 
@@ -161,7 +162,7 @@
   let startedGuard=false;
   const EPS=1e-4;
 
-  // 描画時に算出した半径/ゾーン太さを保持（オーバーレイ位置決め用）
+  // 描画時の半径/ゾーン太さ（オーバーレイ位置用）
   let lastRadius=0;
   let lastZoneLineWidth=24*CONFIG.DRAW_SCALE;
 
@@ -236,7 +237,7 @@
   function draw(angle){
     const w=cssW,h=cssH,CX=w/2,CY=h/2;
     const r = Math.min(w,h) * 0.42 * CONFIG.DRAW_SCALE;
-    lastRadius = r;                       // ← オーバーレイ位置計算で使う
+    lastRadius = r;
     lastZoneLineWidth = 24 * CONFIG.DRAW_SCALE;
 
     ctx.clearRect(0,0,w,h);
@@ -244,7 +245,7 @@
     // 外枠
     ctx.beginPath(); ctx.arc(CX,CY,r,0,FULL); ctx.lineWidth=2; ctx.strokeStyle='#1a2330'; ctx.stroke();
 
-    // ゾーン
+    // ゾーン（太さも0.6倍）
     if(showZones){
       ctx.beginPath();
       ctx.lineWidth=lastZoneLineWidth; ctx.strokeStyle='#94a3b8';
@@ -263,7 +264,7 @@
       ctx.lineWidth=6; ctx.lineCap='butt'; ctx.strokeStyle='#ef4444'; ctx.stroke();
     }
 
-    // コンボ
+    // コンボ（フォント1.2倍補正のまま）
     const combo=String(streak);
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.font=`900 ${Math.max(18,Math.round(r*0.32*1.2))}px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif`;
@@ -272,10 +273,10 @@
     ctx.fillStyle='#eaeef2'; ctx.fillText(combo,CX,CY-r*0.18); ctx.restore();
   }
 
-  // ★ 円の“ちょい上”にオーバーレイ文字を置くユーティリティ
+  // ★ 円の“上”にオーバーレイ文字を置く
   function placeOverlayAboveCircle(ov){
     // 中央基準から上に移動：半径 + ゾーン半分 + 余白
-    const margin = 14; // お好みで
+    const margin = 24; // ← 以前より少し上へ（14→24）
     const dy = - (lastRadius + (lastZoneLineWidth/2) + margin);
     ov.style.transform = `translateY(${dy}px)`;
   }
@@ -309,6 +310,7 @@
 
   function inArcCW(a,s,e){ return (s<=e) ? (a>=s && a<=e) : (a>=s || a<=e); }
 
+  // “おまけグレイト”は Great終端から時計回りに「2度以内」だけ許容（Good側）
   function isGraceGreat(a){
     const grace = deg2rad(CONFIG.GREAT_OVERSHOOT_GRACE_DEG);
     if (inArcCW(a, greatStart, greatEnd)) return false;
@@ -354,7 +356,7 @@
     const ov=overlay.querySelector('.ovtxt');
     ov.style.color='yellow';
     ov.textContent='Ready';
-    ov.style.transform='translateY(30%)'; // カウントダウンは中央付近
+    placeOverlayAboveCircle(ov);    // ★ Ready の場所をグレイトと同位置に
 
     tapBtn.disabled=true; phase='countdown';
     showNeedle=false; showZones=true; draw(frozenAngle);
@@ -383,7 +385,10 @@
         }
         return;
       }
-      if(now>=mid){ ov.textContent='GO!'; }
+      if(now>=mid){
+        ov.textContent='GO!';
+        placeOverlayAboveCircle(ov); // ★ GO! も同じ場所
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -412,12 +417,10 @@
     ov.textContent='グレイト！';
     placeOverlayAboveCircle(ov);      // ★ 円の上に配置
 
-    // 針の表示
+    // 針の表示：通常はその場、”おまけ”は Great終端に吸着
     const now = performance.now();
     const curAngle = angleAt(now);
-    const inGreatNow = inArcCW(curAngle, greatStart, greatEnd);
-    const displayAngle =
-      ( (!inGreatNow && isGraceGreat(curAngle)) ? norm(greatEnd) : curAngle );
+    const displayAngle = isGraceGreat(curAngle) ? norm(greatEnd) : curAngle;
 
     frozenAngle = displayAngle;
     showNeedle = true;
@@ -514,7 +517,7 @@
     draw(frozenAngle);
   }
 
-  // ===== ランキング（そのまま） =====
+  // ===== ランキング =====
   const KEY_NORMAL='rank_great_normal_v6';
   const KEY_LULL  ='rank_great_lullaby_v6';
   function loadScores(key){ try{ return JSON.parse(localStorage.getItem(key)||'[]'); }catch{return []} }
@@ -557,7 +560,7 @@
   window.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); onTap(e); } });
 
   muteBtn.addEventListener('click', e=>{ e.preventDefault(); setMuted(!isMuted); }, {passive:false});
-  $('rankNormalBtn').addEventListener('click', e=>{ e.prevent止; openRanking('normal'); }, {passive:false});
+  $('rankNormalBtn').addEventListener('click', e=>{ e.preventDefault(); openRanking('normal'); }, {passive:false});
   $('rankLullabyBtn').addEventListener('click', e=>{ e.preventDefault(); openRanking('lullaby'); }, {passive:false});
   $('closeRank').addEventListener('click', e=>{ e.preventDefault(); rankDlg.close(); }, {passive:false});
 

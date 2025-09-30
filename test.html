@@ -17,7 +17,11 @@
   header.title h1{margin:0;font-size:clamp(18px,4.3vw,24px);font-weight:900;color:#9bd5ff}
 
   .wrap{min-height:calc(100dvh - 48px);display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 6px 2px}
-  .board{width:100%;max-width:504px;position:relative}  /* ★ 720px → 504px（=0.7倍） */
+  .board{
+    width:100%;               /* JSでwidth/heightをpx指定に上書きします（デフォは100%でOK） */
+    max-width:720px;
+    position:relative;
+  }
   #cv{width:100%;height:100%;display:block;background:#0b0e13;border-radius:12px}
 
   #muteBtn{
@@ -128,7 +132,10 @@
     LULLABY_MAX_DELAY_MS: 1300,
 
     // おまけグレイト許容角（Great終端を時計回りに超えた分、度）
-    GREAT_OVERSHOOT_GRACE_DEG: 4
+    GREAT_OVERSHOOT_GRACE_DEG: 4,
+
+    // ★盤面スケール（TAPボタンより上だけ）…「現在の0.7倍」
+    BOARD_SCALE: 0.7
   };
 
   // ===== 要素 =====
@@ -172,11 +179,23 @@
   // ===== レイアウト =====
   function visualH(){ return (window.visualViewport?.height) || window.innerHeight; }
   function fitBoardToViewport(){
-    const vh=visualH(), headH=hdr.offsetHeight, tapH=tapRow.offsetHeight, barH=btnBar.offsetHeight;
+    // 1) まず「従来の基準サイズ」を計算（0.7倍にする前の値）
+    const vh   = visualH();
+    const headH= hdr.offsetHeight, tapH=tapRow.offsetHeight, barH=btnBar.offsetHeight;
     const lullH=(lullabyWrap.offsetHeight||0) * ((lullabyBtn.style.display!=='none'||rankLullabyBtn.style.display!=='none')?1:0);
-    const reserve=headH+tapH+barH+lullH+12;
-    const idealSide=Math.min(board.clientWidth||board.getBoundingClientRect().width||320, Math.max(160, vh-reserve));
-    board.style.height=idealSide+'px';
+    const reserve = headH + tapH + barH + lullH + 12;
+
+    // 親幅を基準に（board 自身はこれから縮めるので、親の幅を使う）
+    const containerW = board.parentElement?.getBoundingClientRect().width || 320;
+    const baseMaxW   = Math.min(720, containerW);             // 盤面の設計上限（従来どおり720）
+    const baseSide   = Math.min(baseMaxW, Math.max(160, vh - reserve)); // 正方形の一辺（縮小前）
+
+    // 2) ★ここで 0.7 倍にする
+    const side = Math.round(baseSide * CONFIG.BOARD_SCALE);
+
+    // 3) board のサイズをpx指定（幅・高さとも同じにして正方形）
+    board.style.width  = side + 'px';
+    board.style.height = side + 'px';
   }
   let cssW=0, cssH=0, dpr=1;
   function resizeCanvas(){
@@ -481,7 +500,7 @@
       playSE('tap');
       streak++;
 
-      // ★ 10回達成“瞬間”では鳴らさない（→ 終了時にだけ cong 再生）
+      // 10回達成“瞬間”では鳴らさない（→ 終了時にだけ cong 再生）
       if (streak === CONFIG.UNLOCK_STREAK) {
         unlockLullaby();
       }

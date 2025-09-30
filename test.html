@@ -29,7 +29,7 @@
   .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:3;font-weight:900;
     font-size:clamp(26px,7.5vw,52px);background:rgba(0,0,0,.25);backdrop-filter:saturate(120%) blur(1px);text-align:center}
   .overlay.show{display:flex}
-  .overlay .ovtxt { display:inline-block; transform: translateY(30%); color: yellow; }
+  .overlay .ovtxt { display:inline-block; transform: translateY(30%); color: yellow; line-height:1; }
 
   .welcome{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;z-index:2;
     text-align:center;background:rgba(0,0,0,.25)}
@@ -108,29 +108,27 @@
 (() => {
   // ===== 設定 =====
   const CONFIG = {
-    RPM: 60,                       // 針の回転速度
+    RPM: 60,                       
     COUNTDOWN_MS: 1200,
 
-    GOOD_RATIO  : 0.18,            // Good 幅（円周比）
-    GREAT_RATIO : 0.036,           // Great 幅（円周比） 
+    GOOD_RATIO  : 0.18,
+    GREAT_RATIO : 0.036,
 
-    // 5時～10時（0=3時、角度増加＝時計回り）
     GREAT_CENTER_MIN_DEG: 70,
     GREAT_CENTER_MAX_DEG: 225,
 
     INPUT_CD_MS: 45,
-    UNLOCK_STREAK: 10,             // 10連続でララバイ解放
+    UNLOCK_STREAK: 10,
 
-    SUCCESS_PAUSE_MS: 1300,        // 成功後→次ラウンド待機：1.3s
-    SUCCESS_FREEZE_VISIBLE_MS: 300,// 成功直後の静止表示：0.3s（針＆ゾーン見せたまま）
-    SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n→0.4s後に再表示
-    LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.3秒
+    SUCCESS_PAUSE_MS: 1300,
+    SUCCESS_FREEZE_VISIBLE_MS: 300,
+    SHOW_DELAY_AFTER_KAN_MS: 400,
+    LULLABY_MIN_DELAY_MS: 400,
     LULLABY_MAX_DELAY_MS: 1300,
 
-    // おまけグレイト許容角（Great終端を時計回りに超えた分、度）
     GREAT_OVERSHOOT_GRACE_DEG: 4,
 
-    // ★描画スケール（見た目だけ縮小。キャンバスサイズは据え置き）
+    // 見た目スケール（円、針、フォント位置などを0.6倍）
     DRAW_SCALE: 0.6
   };
 
@@ -139,47 +137,42 @@
   const hdr=$('hdr'), board=$('board'), cv=$('cv'), ctx=cv.getContext('2d',{alpha:false,desynchronized:true});
   const tapRow=$('tapRow'), btnBar=$('btnBar'), lullabyWrap=$('lullabyWrap');
   const tapBtn=$('tapBtn'), startBtn=$('startBtn'), lullabyBtn=$('lullabyBtn');
-  const rankNormalBtn=$('rankNormalBtn'), rankLullabyBtn=$('rankLullabyBtn');
   const muteBtn=$('muteBtn'), overlay=$('overlay'), welcome=$('welcome');
   const rankDlg=$('rankDlg'), rankTbody=$('rankTbody'), rankTitle=$('rankTitle'), closeRank=$('closeRank');
 
   // ===== 状態 =====
-  let phase='idle';            // 'idle' | 'countdown' | 'play' | 'pause'
+  let phase='idle';
   let streak=0, lastInputAt=0, rafId=0, isMuted=false;
-  let mode='normal';           // 'normal' | 'lullaby'
-  let isEnding=false;          // 重複終了ガード
+  let mode='normal';
+  let isEnding=false;
 
   const FULL=Math.PI*2;
 
-  // 時計回り：角度“増加”で進行。基準角は12時（-π/2）
   let baseAngle=-Math.PI/2;
   let baseTime=0;
   let frozenAngle=-Math.PI/2;
 
-  // ゾーン（時計回りに start→end で定義）
   let goodStart=0, goodEnd=0;
-  let greatStart=0, greatEnd=0;  // Great は Good の「進入側=右端（先頭）」に接する → greatStart=goodStart
+  let greatStart=0, greatEnd=0;
 
-  // 表示制御
   let showNeedle=false, showZones=true;
 
-  // 通過判定
   let lastAngle=null;
-  let startedGuard=false;        // 開始直後1フレームは通過判定を無効化
+  let startedGuard=false;
   const EPS=1e-4;
 
-  // 成功時の表示制御
-  let lastSuccessAngle = null;       // 実際に止めた角度
-  let lastSuccessWasGrace = false;   // おまけグレイトだったか
+  // 描画時に算出した半径/ゾーン太さを保持（オーバーレイ位置決め用）
+  let lastRadius=0;
+  let lastZoneLineWidth=24*CONFIG.DRAW_SCALE;
 
-  // ===== レイアウト（黒い盤面サイズは従来どおり算出） =====
+  // ===== レイアウト（黒い盤面は従来通り） =====
   function visualH(){ return (window.visualViewport?.height) || window.innerHeight; }
   function fitBoardToViewport(){
     const vh=visualH(), headH=hdr.offsetHeight, tapH=tapRow.offsetHeight, barH=btnBar.offsetHeight;
-    const lullH=(lullabyWrap.offsetHeight||0) * ((lullabyBtn.style.display!=='none'||rankLullabyBtn.style.display!=='none')?1:0);
+    const lullH=(lullabyWrap.offsetHeight||0);
     const reserve=headH+tapH+barH+lullH+12;
     const idealSide=Math.min(board.clientWidth||board.getBoundingClientRect().width||320, Math.max(160, vh-reserve));
-    board.style.height=idealSide+'px';  // ← 背景（黒い盤面）の高さだけ調整
+    board.style.height=idealSide+'px';
   }
   let cssW=0, cssH=0, dpr=1;
   function resizeCanvas(){
@@ -229,40 +222,40 @@
   function playSE(key){ if(isMuted) return; if(playBuf(key)) return; unlockAndWarmAudio(); const tag=html[key]; if(tag){ try{ tag.currentTime=0; tag.play(); }catch{} } }
   window.addEventListener('pointerdown', ()=>{ unlockAndWarmAudio(); }, {once:true});
 
-  // ===== 角度／描画（見た目0.6倍に縮小） =====
+  // ===== 角度／描画 =====
   const norm=a=>(a%FULL+FULL)%FULL;
-  const cwDelta=(from,to)=> (to - from + FULL) % FULL; // 時計回り量
+  const cwDelta=(from,to)=> (to - from + FULL) % FULL;
 
   const angleAt = t => {
     const rps = CONFIG.RPM / 60;
     const d = (t - baseTime) / 1000;
-    return norm(baseAngle + rps * FULL * d); // 時計回り
+    return norm(baseAngle + rps * FULL * d);
   };
   const getCurrentAngle=t=>(phase==='play')?angleAt(t):frozenAngle;
 
   function draw(angle){
     const w=cssW,h=cssH,CX=w/2,CY=h/2;
-    // 元々の半径 0.42 * min(w,h) を「見た目だけ」0.6倍
     const r = Math.min(w,h) * 0.42 * CONFIG.DRAW_SCALE;
+    lastRadius = r;                       // ← オーバーレイ位置計算で使う
+    lastZoneLineWidth = 24 * CONFIG.DRAW_SCALE;
 
     ctx.clearRect(0,0,w,h);
 
-    // 外枠（縮小後の円周に合わせて描く／線幅は据え置き2px）
+    // 外枠
     ctx.beginPath(); ctx.arc(CX,CY,r,0,FULL); ctx.lineWidth=2; ctx.strokeStyle='#1a2330'; ctx.stroke();
 
-    // ゾーン（Good→Great）…線幅も0.6倍
+    // ゾーン
     if(showZones){
-      const zoneLW = 24 * CONFIG.DRAW_SCALE; // ★太さ0.6倍
       ctx.beginPath();
-      ctx.lineWidth=zoneLW; ctx.strokeStyle='#94a3b8';
+      ctx.lineWidth=lastZoneLineWidth; ctx.strokeStyle='#94a3b8';
       ctx.arc(CX,CY,r,goodStart,goodEnd); ctx.stroke();
 
       ctx.beginPath();
-      ctx.lineWidth=zoneLW; ctx.strokeStyle='#ffffff';
+      ctx.lineWidth=lastZoneLineWidth; ctx.strokeStyle='#ffffff';
       ctx.arc(CX,CY,r,greatStart,greatEnd); ctx.stroke();
     }
 
-    // 針（長さはrに追従→見た目0.6倍になる。太さは据え置き6px）
+    // 針
     if(showNeedle){
       const fx=CX + r*1.2*Math.cos(angle);
       const fy=CY + r*1.2*Math.sin(angle);
@@ -270,7 +263,7 @@
       ctx.lineWidth=6; ctx.lineCap='butt'; ctx.strokeStyle='#ef4444'; ctx.stroke();
     }
 
-    // 連続表示（半径に依存→自動で0.6倍に。フォント1.2倍補正は維持）
+    // コンボ
     const combo=String(streak);
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.font=`900 ${Math.max(18,Math.round(r*0.32*1.2))}px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif`;
@@ -279,46 +272,51 @@
     ctx.fillStyle='#eaeef2'; ctx.fillText(combo,CX,CY-r*0.18); ctx.restore();
   }
 
+  // ★ 円の“ちょい上”にオーバーレイ文字を置くユーティリティ
+  function placeOverlayAboveCircle(ov){
+    // 中央基準から上に移動：半径 + ゾーン半分 + 余白
+    const margin = 14; // お好みで
+    const dy = - (lastRadius + (lastZoneLineWidth/2) + margin);
+    ov.style.transform = `translateY(${dy}px)`;
+  }
+
   // ===== ユーティリティ =====
   function deg2rad(d){ return d*Math.PI/180; }
   function setNeedleAt12(now){
     baseTime=now;
-    baseAngle = -Math.PI/2; // 12時
+    baseAngle = -Math.PI/2;
     frozenAngle = -Math.PI/2;
     lastAngle = baseAngle;
   }
   function randomIn(min,max){ return min + Math.random()*(max-min); }
 
-  // 5～10時レンジに Good を置く → Great は Good の「進入側＝右端（先頭）」に接する
   function placeZones(){
     const goodW  = FULL * CONFIG.GOOD_RATIO;
     const greatW = FULL * CONFIG.GREAT_RATIO;
 
     const cdeg = randomIn(CONFIG.GREAT_CENTER_MIN_DEG, CONFIG.GREAT_CENTER_MAX_DEG);
-    const c = norm(deg2rad(cdeg)); // 中心角
+    const c = norm(deg2rad(cdeg));
 
     const bStart = norm(c - goodW/2);
     const bEnd   = norm(c + goodW/2);
 
-    const gStart = bStart;             // 進入側（先頭）
+    const gStart = bStart;
     const gEnd   = norm(gStart + greatW);
 
     goodStart=bStart; goodEnd=bEnd;
     greatStart=gStart; greatEnd=gEnd;
   }
 
-  // 角度 a が「時計回りの弧 s→e」に含まれるか
   function inArcCW(a,s,e){ return (s<=e) ? (a>=s && a<=e) : (a>=s || a<=e); }
 
-  // “おまけグレイト”判定（Great終端を少し時計回りに超えているか）
   function isGraceGreat(a){
     const grace = deg2rad(CONFIG.GREAT_OVERSHOOT_GRACE_DEG);
-    if (inArcCW(a, greatStart, greatEnd)) return false; // 既にGreat内は通常成功
-    const over = cwDelta(greatEnd, a);                  // greatEnd→a の時計回り差
-    return over > 0 && over <= grace;                   // greatEnd直後（= Good側）だけおまけ
+    if (inArcCW(a, greatStart, greatEnd)) return false;
+    const over = cwDelta(greatEnd, a);
+    return over > 0 && over <= grace;
   }
 
-  // ===== ループ（“最初にグッドゾーンを通り越した”瞬間にミス） =====
+  // ===== ループ =====
   function loop(now){
     const ang=getCurrentAngle(now);
     draw(ang);
@@ -330,7 +328,7 @@
         const movedCW = cwDelta(lastAngle, ang);
         const toGoodEnd = cwDelta(lastAngle, goodEnd);
         if (movedCW > EPS && toGoodEnd > EPS && movedCW > toGoodEnd){
-          gameOver('ex'); // 何も押さずにGoodを通過
+          gameOver('ex');
           return;
         }
       }
@@ -349,16 +347,14 @@
   function setupInitial(){
     placeZones();
     resizeCanvas();
-    lastSuccessAngle = null;
-    lastSuccessWasGrace = false;
   }
 
   function showCountdown(){
     overlay.classList.add('show');
     const ov=overlay.querySelector('.ovtxt');
-    ov.style.transform='translateY(30%)'; // 既定位置
     ov.style.color='yellow';
     ov.textContent='Ready';
+    ov.style.transform='translateY(30%)'; // カウントダウンは中央付近
 
     tapBtn.disabled=true; phase='countdown';
     showNeedle=false; showZones=true; draw(frozenAngle);
@@ -387,9 +383,7 @@
         }
         return;
       }
-      if(now>=mid){
-        ov.textContent='GO!';
-      }
+      if(now>=mid){ ov.textContent='GO!'; }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -414,15 +408,16 @@
 
     overlay.classList.add('show');
     const ov=overlay.querySelector('.ovtxt');
-    ov.style.transform='translateY(30%)';
     ov.style.color='yellow';
     ov.textContent='グレイト！';
+    placeOverlayAboveCircle(ov);      // ★ 円の上に配置
 
-    // フリーズ中の針表示：通常は止めた角度／おまけだけ境目へ吸着
+    // 針の表示
     const now = performance.now();
     const curAngle = angleAt(now);
+    const inGreatNow = inArcCW(curAngle, greatStart, greatEnd);
     const displayAngle =
-      (lastSuccessWasGrace ? norm(greatEnd) : (lastSuccessAngle ?? curAngle));
+      ( (!inGreatNow && isGraceGreat(curAngle)) ? norm(greatEnd) : curAngle );
 
     frozenAngle = displayAngle;
     showNeedle = true;
@@ -442,12 +437,10 @@
       setTimeout(()=>{
         overlay.classList.remove('show');
         ov.textContent='';
-
         if(mode==='normal'){ playSE('ka_n'); }
         const extra = (mode==='normal')
           ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
           : Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
-
         setTimeout(()=>{
           const t=performance.now();
           setNeedleAt12(t);
@@ -475,15 +468,8 @@
     if (inGreat || grace) {
       playSE('tap');
       streak++;
-
-      // 10回達成“瞬間”では鳴らさない（→ 終了時のみ cong 再生）
-      if (streak === CONFIG.UNLOCK_STREAK) {
-        unlockLullaby();
-      }
-
-      lastSuccessAngle = a;
-      lastSuccessWasGrace = !inGreat && grace;
-
+      if (streak === CONFIG.UNLOCK_STREAK) { unlockLullaby(); }
+      frozenAngle = a;
       endRoundAndQueueNext();
     } else if(inGood){
       gameOver('batu');
@@ -506,21 +492,17 @@
     const ov = overlay.querySelector('.ovtxt');
 
     if (streak >= 10) {
-      // 10回以上で終了したときだけ cong を鳴らす
-      playSE('cong');
-
-      // 2行メッセージを中央で
-      ov.style.transform = 'translateY(0)';
-
+      playSE('cong');               // ★ 終了時のみ祝砲
+      ov.style.transform = 'translateY(0)'; // 2行は中央
       if (mode === 'lullaby') {
         ov.innerHTML = '<span style="color:#ffffff">ララバイモードで10回連続は神。</span><br><span style="color:yellow">ぜひXでスクショを投稿してね！</span>';
       } else {
         ov.innerHTML = '<span style="color:#ffffff">10回達成おめでとう！🎉</span><br><span style="color:yellow">ララバイモードアンロック！</span>';
       }
     } else {
-      ov.style.transform = 'translateY(30%)';
       ov.style.color = '#ffffff';
       ov.textContent = '失敗';
+      placeOverlayAboveCircle(ov);  // ★ 失敗も円の上に配置
     }
   }
 
@@ -532,7 +514,7 @@
     draw(frozenAngle);
   }
 
-  // ===== ランキング =====
+  // ===== ランキング（そのまま） =====
   const KEY_NORMAL='rank_great_normal_v6';
   const KEY_LULL  ='rank_great_lullaby_v6';
   function loadScores(key){ try{ return JSON.parse(localStorage.getItem(key)||'[]'); }catch{return []} }
@@ -561,24 +543,23 @@
   const UNLOCK_KEY='unlock_lullaby_mode';
   function isUnlocked(){ try{ return localStorage.getItem(UNLOCK_KEY)==='1'; }catch{ return false; } }
   function unlockLullaby(){ try{ localStorage.setItem(UNLOCK_KEY,'1'); }catch{} updateUnlockVisibility(); }
-
   function updateUnlockVisibility(){
     const unlocked=isUnlocked();
-    lullabyBtn.style.display = unlocked ? 'inline-block' : 'none';
-    rankLullabyBtn.style.display = unlocked ? 'inline-block' : 'none';
+    $('lullabyBtn').style.display = unlocked ? 'inline-block' : 'none';
+    $('rankLullabyBtn').style.display = unlocked ? 'inline-block' : 'none';
     requestAnimationFrame(resizeCanvas);
   }
 
-  // ===== 初期化＆イベント =====
+  // ===== イベント =====
   startBtn.addEventListener('click', e=>{ e.preventDefault(); startGame('normal'); }, {passive:false});
   lullabyBtn.addEventListener('click', e=>{ e.preventDefault(); startGame('lullaby'); }, {passive:false});
   tapBtn  .addEventListener('pointerdown', e=>{ e.preventDefault(); onTap(e); }, {passive:false});
   window.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); onTap(e); } });
 
   muteBtn.addEventListener('click', e=>{ e.preventDefault(); setMuted(!isMuted); }, {passive:false});
-  $('rankNormalBtn').addEventListener('click', e=>{ e.preventDefault(); openRanking('normal'); }, {passive:false});
-  $('rankLullabyBtn')   .addEventListener('click', e=>{ e.preventDefault(); openRanking('lullaby'); }, {passive:false});
-  $('closeRank')        .addEventListener('click', e=>{ e.preventDefault(); rankDlg.close(); }, {passive:false});
+  $('rankNormalBtn').addEventListener('click', e=>{ e.prevent止; openRanking('normal'); }, {passive:false});
+  $('rankLullabyBtn').addEventListener('click', e=>{ e.preventDefault(); openRanking('lullaby'); }, {passive:false});
+  $('closeRank').addEventListener('click', e=>{ e.preventDefault(); rankDlg.close(); }, {passive:false});
 
   setMuted(false);
   updateUnlockVisibility();

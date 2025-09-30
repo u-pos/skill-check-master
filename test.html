@@ -17,11 +17,7 @@
   header.title h1{margin:0;font-size:clamp(18px,4.3vw,24px);font-weight:900;color:#9bd5ff}
 
   .wrap{min-height:calc(100dvh - 48px);display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 6px 2px}
-  .board{
-    width:100%;               /* JSでwidth/heightをpx指定に上書きします（デフォは100%でOK） */
-    max-width:720px;
-    position:relative;
-  }
+  .board{width:100%;max-width:720px;position:relative} /* ← 黒い盤面サイズは変更しません */
   #cv{width:100%;height:100%;display:block;background:#0b0e13;border-radius:12px}
 
   #muteBtn{
@@ -134,8 +130,8 @@
     // おまけグレイト許容角（Great終端を時計回りに超えた分、度）
     GREAT_OVERSHOOT_GRACE_DEG: 4,
 
-    // ★盤面スケール（TAPボタンより上だけ）…「現在の0.7倍」
-    BOARD_SCALE: 0.7
+    // ★描画スケール（見た目だけ縮小。キャンバスサイズは据え置き）
+    DRAW_SCALE: 0.6
   };
 
   // ===== 要素 =====
@@ -176,26 +172,14 @@
   let lastSuccessAngle = null;       // 実際に止めた角度
   let lastSuccessWasGrace = false;   // おまけグレイトだったか
 
-  // ===== レイアウト =====
+  // ===== レイアウト（黒い盤面サイズは従来どおり算出） =====
   function visualH(){ return (window.visualViewport?.height) || window.innerHeight; }
   function fitBoardToViewport(){
-    // 1) まず「従来の基準サイズ」を計算（0.7倍にする前の値）
-    const vh   = visualH();
-    const headH= hdr.offsetHeight, tapH=tapRow.offsetHeight, barH=btnBar.offsetHeight;
+    const vh=visualH(), headH=hdr.offsetHeight, tapH=tapRow.offsetHeight, barH=btnBar.offsetHeight;
     const lullH=(lullabyWrap.offsetHeight||0) * ((lullabyBtn.style.display!=='none'||rankLullabyBtn.style.display!=='none')?1:0);
-    const reserve = headH + tapH + barH + lullH + 12;
-
-    // 親幅を基準に（board 自身はこれから縮めるので、親の幅を使う）
-    const containerW = board.parentElement?.getBoundingClientRect().width || 320;
-    const baseMaxW   = Math.min(720, containerW);             // 盤面の設計上限（従来どおり720）
-    const baseSide   = Math.min(baseMaxW, Math.max(160, vh - reserve)); // 正方形の一辺（縮小前）
-
-    // 2) ★ここで 0.7 倍にする
-    const side = Math.round(baseSide * CONFIG.BOARD_SCALE);
-
-    // 3) board のサイズをpx指定（幅・高さとも同じにして正方形）
-    board.style.width  = side + 'px';
-    board.style.height = side + 'px';
+    const reserve=headH+tapH+barH+lullH+12;
+    const idealSide=Math.min(board.clientWidth||board.getBoundingClientRect().width||320, Math.max(160, vh-reserve));
+    board.style.height=idealSide+'px';  // ← 背景（黒い盤面）の高さだけ調整
   }
   let cssW=0, cssH=0, dpr=1;
   function resizeCanvas(){
@@ -245,7 +229,7 @@
   function playSE(key){ if(isMuted) return; if(playBuf(key)) return; unlockAndWarmAudio(); const tag=html[key]; if(tag){ try{ tag.currentTime=0; tag.play(); }catch{} } }
   window.addEventListener('pointerdown', ()=>{ unlockAndWarmAudio(); }, {once:true});
 
-  // ===== 角度／描画 =====
+  // ===== 角度／描画（見た目0.6倍に縮小） =====
   const norm=a=>(a%FULL+FULL)%FULL;
   const cwDelta=(from,to)=> (to - from + FULL) % FULL; // 時計回り量
 
@@ -257,24 +241,28 @@
   const getCurrentAngle=t=>(phase==='play')?angleAt(t):frozenAngle;
 
   function draw(angle){
-    const w=cssW,h=cssH,CX=w/2,CY=h/2, r=Math.min(w,h)*0.42;
+    const w=cssW,h=cssH,CX=w/2,CY=h/2;
+    // 元々の半径 0.42 * min(w,h) を「見た目だけ」0.6倍
+    const r = Math.min(w,h) * 0.42 * CONFIG.DRAW_SCALE;
+
     ctx.clearRect(0,0,w,h);
 
-    // 外枠
+    // 外枠（縮小後の円周に合わせて描く／線幅は据え置き2px）
     ctx.beginPath(); ctx.arc(CX,CY,r,0,FULL); ctx.lineWidth=2; ctx.strokeStyle='#1a2330'; ctx.stroke();
 
-    // ゾーン（Good→Great）
+    // ゾーン（Good→Great）…線幅も0.6倍
     if(showZones){
+      const zoneLW = 24 * CONFIG.DRAW_SCALE; // ★太さ0.6倍
       ctx.beginPath();
-      ctx.lineWidth=24; ctx.strokeStyle='#94a3b8';
+      ctx.lineWidth=zoneLW; ctx.strokeStyle='#94a3b8';
       ctx.arc(CX,CY,r,goodStart,goodEnd); ctx.stroke();
 
       ctx.beginPath();
-      ctx.lineWidth=24; ctx.strokeStyle='#ffffff';
+      ctx.lineWidth=zoneLW; ctx.strokeStyle='#ffffff';
       ctx.arc(CX,CY,r,greatStart,greatEnd); ctx.stroke();
     }
 
-    // 針
+    // 針（長さはrに追従→見た目0.6倍になる。太さは据え置き6px）
     if(showNeedle){
       const fx=CX + r*1.2*Math.cos(angle);
       const fy=CY + r*1.2*Math.sin(angle);
@@ -282,7 +270,7 @@
       ctx.lineWidth=6; ctx.lineCap='butt'; ctx.strokeStyle='#ef4444'; ctx.stroke();
     }
 
-    // 連続表示（★フォント1.2倍）
+    // 連続表示（半径に依存→自動で0.6倍に。フォント1.2倍補正は維持）
     const combo=String(streak);
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.font=`900 ${Math.max(18,Math.round(r*0.32*1.2))}px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif`;
@@ -301,18 +289,7 @@
   }
   function randomIn(min,max){ return min + Math.random()*(max-min); }
 
-  // 表示用：角度 a を時計回り弧 s→e 内にクランプ（必要なときだけ使用）
-  function clampAngleToArc(a, s, e){
-    let ss = s, ee = e, aa = a;
-    if (ee < ss) ee += FULL;
-    while (aa < ss) aa += FULL;
-    while (aa > ee) aa -= FULL;
-    if (aa < ss) aa = ss;
-    if (aa > ee) aa = ee;
-    return norm(aa);
-  }
-
-  // 5～10時レンジに Good を置く → Great は Good の「進入側=右端（先頭）」に接する
+  // 5～10時レンジに Good を置く → Great は Good の「進入側＝右端（先頭）」に接する
   function placeZones(){
     const goodW  = FULL * CONFIG.GOOD_RATIO;
     const greatW = FULL * CONFIG.GREAT_RATIO;
@@ -435,7 +412,6 @@
   function endRoundAndQueueNext(){
     phase='pause';
 
-    // 「グレイト！」（通常のオーバーレイ位置でOK）
     overlay.classList.add('show');
     const ov=overlay.querySelector('.ovtxt');
     ov.style.transform='translateY(30%)';
@@ -500,7 +476,7 @@
       playSE('tap');
       streak++;
 
-      // 10回達成“瞬間”では鳴らさない（→ 終了時にだけ cong 再生）
+      // 10回達成“瞬間”では鳴らさない（→ 終了時のみ cong 再生）
       if (streak === CONFIG.UNLOCK_STREAK) {
         unlockLullaby();
       }
@@ -530,10 +506,10 @@
     const ov = overlay.querySelector('.ovtxt');
 
     if (streak >= 10) {
-      // ★ 10回以上で終了したときだけ cong を鳴らす
+      // 10回以上で終了したときだけ cong を鳴らす
       playSE('cong');
 
-      // 10回達成メッセージは円中心に2行で表示
+      // 2行メッセージを中央で
       ov.style.transform = 'translateY(0)';
 
       if (mode === 'lullaby') {
@@ -542,7 +518,6 @@
         ov.innerHTML = '<span style="color:#ffffff">10回達成おめでとう！🎉</span><br><span style="color:yellow">ララバイモードアンロック！</span>';
       }
     } else {
-      // 通常の失敗表示（既定位置へ戻す）
       ov.style.transform = 'translateY(30%)';
       ov.style.color = '#ffffff';
       ov.textContent = '失敗';
@@ -574,7 +549,7 @@
     rankTbody.innerHTML='';
     arr.forEach((e,i)=>{
       const d=new Date(e.at);
-      const date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate())}`;
       const tr=document.createElement('tr'); tr.innerHTML=`<td>${i+1}</td><td>${date}</td><td>${e.score}</td>`;
       rankTbody.appendChild(tr);
     });
@@ -594,7 +569,7 @@
     requestAnimationFrame(resizeCanvas);
   }
 
-  // ===== イベント =====
+  // ===== 初期化＆イベント =====
   startBtn.addEventListener('click', e=>{ e.preventDefault(); startGame('normal'); }, {passive:false});
   lullabyBtn.addEventListener('click', e=>{ e.preventDefault(); startGame('lullaby'); }, {passive:false});
   tapBtn  .addEventListener('pointerdown', e=>{ e.preventDefault(); onTap(e); }, {passive:false});
@@ -605,7 +580,6 @@
   $('rankLullabyBtn')   .addEventListener('click', e=>{ e.preventDefault(); openRanking('lullaby'); }, {passive:false});
   $('closeRank')        .addEventListener('click', e=>{ e.preventDefault(); rankDlg.close(); }, {passive:false});
 
-  // ===== 初期化 =====
   setMuted(false);
   updateUnlockVisibility();
   requestAnimationFrame(()=>{ resizeCanvas(); });

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>スキチェマスターへの道</title> 
+<title>スキチェマスター・ザ・ゲーム</title> 
 <style>
   :root{ --bg:#0f1115; --fg:#eaeef2; }
   html,body{
@@ -17,7 +17,7 @@
   header.title h1{margin:0;font-size:clamp(18px,4.3vw,24px);font-weight:900;color:#9bd5ff}
 
   .wrap{min-height:calc(100dvh - 48px);display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 6px 2px}
-  .board{width:100%;max-width:720px;position:relative}
+  .board{width:100%;max-width:504px;position:relative}  /* ★ 720px → 504px（=0.7倍） */
   #cv{width:100%;height:100%;display:block;background:#0b0e13;border-radius:12px}
 
   #muteBtn{
@@ -29,7 +29,7 @@
   .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:3;font-weight:900;
     font-size:clamp(26px,7.5vw,52px);background:rgba(0,0,0,.25);backdrop-filter:saturate(120%) blur(1px);text-align:center}
   .overlay.show{display:flex}
-  .overlay .ovtxt { display:inline-block; transform: translateY(30%); color: yellow; line-height: 1; } /* 改行を盤面中心に合わせる */
+  .overlay .ovtxt { display:inline-block; transform: translateY(30%); color: yellow; }
 
   .welcome{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;z-index:2;
     text-align:center;background:rgba(0,0,0,.25)}
@@ -70,7 +70,7 @@
 </style>
 </head>
 <body>
-  <header class="title" id="hdr"><h1>スキチェマスターへの道</h1></header> 
+  <header class="title" id="hdr"><h1>スキチェマスター・ザ・ゲーム</h1></header> 
 
   <div class="wrap">
     <div class="board" id="board">
@@ -85,13 +85,13 @@
     <!-- スタート＋ランキング（通常） -->
     <div class="bar" id="btnBar">
       <button id="startBtn" class="btn">▶ スタート</button>
-      <button id="rankNormalBtn" class="btn">🏆（通常）</button>
+      <button id="rankNormalBtn" class="btn">🏆 通常</button>
     </div>
 
     <!-- ララバイモード＋ランキング（ララバイ） -->
     <div id="lullabyWrap">
-      <button id="lullabyBtn" class="btn">♪ ララバイモード</button>
-      <button id="rankLullabyBtn" class="btn">🏆（ララバイモード）</button>
+      <button id="lullabyBtn" class="btn">ララバイモード</button>
+      <button id="rankLullabyBtn" class="btn">🏆 ララバイ</button>
     </div>
   </div>
 
@@ -111,12 +111,12 @@
     RPM: 60,                       // 針の回転速度
     COUNTDOWN_MS: 1200,
 
-    GOOD_RATIO  : 0.20,            // Good 幅（円周比）
-    GREAT_RATIO : 0.040,           // Great 幅（円周比） 
+    GOOD_RATIO  : 0.18,            // Good 幅（円周比）
+    GREAT_RATIO : 0.036,           // Great 幅（円周比） 
 
     // 5時～10時（0=3時、角度増加＝時計回り）
     GREAT_CENTER_MIN_DEG: 70,
-    GREAT_CENTER_MAX_DEG: 220,
+    GREAT_CENTER_MAX_DEG: 225,
 
     INPUT_CD_MS: 45,
     UNLOCK_STREAK: 10,             // 10連続でララバイ解放
@@ -128,10 +128,7 @@
     LULLABY_MAX_DELAY_MS: 1300,
 
     // おまけグレイト許容角（Great終端を時計回りに超えた分、度）
-    GREAT_OVERSHOOT_GRACE_DEG: 2,
-
-    // ★盤面スケール（幅・高さの上限を縮小）…0.7で「今の0.7倍」
-    BOARD_SCALE: 0.7
+    GREAT_OVERSHOOT_GRACE_DEG: 4
   };
 
   // ===== 要素 =====
@@ -175,20 +172,11 @@
   // ===== レイアウト =====
   function visualH(){ return (window.visualViewport?.height) || window.innerHeight; }
   function fitBoardToViewport(){
-    // 盤面の“最大幅”自体を縮める（幅＆高さが一緒に小さくなる）。下部ボタンには影響なし
-    const scaledMax = 720 * CONFIG.BOARD_SCALE;      // 720px → 0.7倍
-    board.style.maxWidth = scaledMax + 'px';
-
     const vh=visualH(), headH=hdr.offsetHeight, tapH=tapRow.offsetHeight, barH=btnBar.offsetHeight;
     const lullH=(lullabyWrap.offsetHeight||0) * ((lullabyBtn.style.display!=='none'||rankLullabyBtn.style.display!=='none')?1:0);
     const reserve=headH+tapH+barH+lullH+12;
-
-    // boardの現在幅（maxWidth適用後）と、縦の空きの小さい方に正方形で合わせる
-    const currentW = board.getBoundingClientRect().width || scaledMax;
-    const idealSide = Math.min(currentW, Math.max(160, vh - reserve));
-
-    // 正方形にする
-    board.style.height = idealSide + 'px';
+    const idealSide=Math.min(board.clientWidth||board.getBoundingClientRect().width||320, Math.max(160, vh-reserve));
+    board.style.height=idealSide+'px';
   }
   let cssW=0, cssH=0, dpr=1;
   function resizeCanvas(){
@@ -210,13 +198,13 @@
   let actx=null,gMaster=null;
 
   const SOUND_FILES = {
-    tap   : 'tap.mp3',     // Great成功時のTAPのみ
-    ready : 'ready.mp3',   // スタート直後
-    ka_n  : 'ka-n.mp3',    // ラウンド開始直前（通常のみ）
-    batu  : 'batu.mp3',    // ミス音（Goodタップ）
-    ex    : 'ex.mp3',      // Good/Great外TAP & 自動ミス
-    fanfare: 'fanfare.mp3',// 予備
-    cong  : 'cong.mp3'     // ★10回以上で終了時に鳴らす
+    tap   : 'tap.mp3',
+    ready : 'ready.mp3',
+    ka_n  : 'ka-n.mp3',
+    batu  : 'batu.mp3',
+    ex    : 'ex.mp3',
+    fanfare: 'fanfare.mp3',
+    cong  : 'cong.mp3'
   };
   const buf={}; const html={};
   Object.entries(SOUND_FILES).forEach(([key, file])=>{
@@ -305,7 +293,7 @@
     return norm(aa);
   }
 
-  // 5～10時レンジに Good を置く → Great は Good の「進入側（先頭）」に接する
+  // 5～10時レンジに Good を置く → Great は Good の「進入側=右端（先頭）」に接する
   function placeZones(){
     const goodW  = FULL * CONFIG.GOOD_RATIO;
     const greatW = FULL * CONFIG.GREAT_RATIO;
@@ -489,18 +477,22 @@
     const inGood  = inArcCW(a, goodStart,  goodEnd);
     const grace   = isGraceGreat(a);
 
-    if(inGreat || grace){
+    if (inGreat || grace) {
       playSE('tap');
       streak++;
-      if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); } // 達成瞬間では鳴らさない（→終了時に鳴らす）
+
+      // ★ 10回達成“瞬間”では鳴らさない（→ 終了時にだけ cong 再生）
+      if (streak === CONFIG.UNLOCK_STREAK) {
+        unlockLullaby();
+      }
 
       lastSuccessAngle = a;
       lastSuccessWasGrace = !inGreat && grace;
 
       endRoundAndQueueNext();
-    }else if(inGood){
+    } else if(inGood){
       gameOver('batu');
-    }else{
+    } else {
       gameOver('ex');
     }
   }
@@ -519,23 +511,16 @@
     const ov = overlay.querySelector('.ovtxt');
 
     if (streak >= 10) {
-      // ★10回以上でゲーム終了時に祝砲（ここでだけcongを鳴らす）
+      // ★ 10回以上で終了したときだけ cong を鳴らす
       playSE('cong');
 
-      // 2行メッセージは円中心に表示（改行が中心）
+      // 10回達成メッセージは円中心に2行で表示
       ov.style.transform = 'translateY(0)';
-      ov.style.lineHeight = '1';
 
       if (mode === 'lullaby') {
-        // ララバイ時の特別文言
-        ov.innerHTML =
-          '<span style="color:#ffffff">ララバイモードで10回連続は神。</span><br>' +
-          '<span style="color:yellow">ぜひXでスクショを投稿してね！</span>';
+        ov.innerHTML = '<span style="color:#ffffff">ララバイモードで10回連続は神。</span><br><span style="color:yellow">ぜひXでスクショを投稿してね！</span>';
       } else {
-        // 通常モードの達成文言（1行目白、2行目黄）
-        ov.innerHTML =
-          '<span style="color:#ffffff">10回達成おめでとう！🎉</span><br>' +
-          '<span style="color:yellow">ララバイモードアンロック！</span>';
+        ov.innerHTML = '<span style="color:#ffffff">10回達成おめでとう！🎉</span><br><span style="color:yellow">ララバイモードアンロック！</span>';
       }
     } else {
       // 通常の失敗表示（既定位置へ戻す）

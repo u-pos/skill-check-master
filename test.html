@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>スキチェマスターへの道</title> 
+<style>
+  :root{ --bg:#0f1115; --fg:#eaeef2; }
+  html,body{
+    margin:0;height:100%;
+    background:var(--bg);color:var(--fg);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  header.title{width:100%;display:flex;justify-content:center;align-items:center;
+    padding:8px 6px;margin:0;background:#0b1220;border-bottom:1px solid #1f2b3a}
+  header.title h1{margin:0;font-size:clamp(18px,4.3vw,24px);font-weight:900;color:#9bd5ff}
+
+  .wrap{min-height:calc(100dvh - 48px);display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 6px 2px}
+  .board{width:100%;max-width:720px;position:relative}
+  #cv{width:100%;height:100%;display:block;background:#0b0e13;border-radius:12px}
+
+  #muteBtn{
+    position:absolute;top:6px;left:6px;z-index:5;
+    width:40px;height:40px;font-size:20px;line-height:1;text-align:center;
+    border-radius:8px;border:1px solid #26303a;background:#1f2937;color:#eaeef2;cursor:pointer;
+  }
+
+  .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:3;font-weight:900;
+    font-size:clamp(26px,7.5vw,52px);background:rgba(0,0,0,.25);backdrop-filter:saturate(120%) blur(1px);text-align:center}
+  .overlay.show{display:flex}
+  .overlay .ovtxt { display:inline-block; transform: translateY(30%); color: yellow; line-height: 1; } /* 改行を盤面中心に合わせる */
+
+  .welcome{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;z-index:2;
+    text-align:center;background:rgba(0,0,0,.25)}
+  .welcome h2{margin:0;font-size:clamp(24px,7vw,43px);font-weight:900;color:#c8ffe0;transform: translateY(50%);} 
+
+  .tap-row{width:100%;max-width:820px;margin-top:2px;display:flex;justify-content:center}
+  #tapBtn{
+    width:min(92%,620px);height:92px;margin-bottom:10px;
+    border:2px solid #334155;border-radius:16px;background:#0f131a;
+    font-weight:900;font-size:clamp(20px,6vw,30px);color:#e5e7eb;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  }
+  #tapBtn[disabled]{opacity:.45;cursor:not-allowed}
+
+  .bar, #lullabyWrap{
+    width:min(92%,620px);
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:8px;
+    justify-content:center;
+    align-items:stretch;
+  }
+  .btn{
+    border:1px solid #26303a;background:#1f2937;color:#fff;border-radius:12px;
+    padding:10px 12px;
+    font-weight:900;font-size:clamp(18px,5vw,24px);
+    cursor:pointer;width:100%;
+  }
+  #startBtn{background:#10b981;border-color:#065f46;color:#062e26}
+
+  /* ララバイ */
+  #lullabyBtn{display:none;background:#a855f7;border-color:#6d28d9}
+  #rankLullabyBtn{display:none}
+
+  dialog{border:none;border-radius:12px;padding:0;max-width:520px;width:90vw;background:#0f111a;color:#fff}
+  .dlg-head{padding:12px 14px;border-bottom:1px solid #253040;font-weight:700}
+  .rank-list{width:100%;border-collapse:collapse}
+  .rank-list th,.rank-list td{padding:8px 6px;border-bottom:1px solid #1d2533;text-align:left}
+</style>
+</head>
+<body>
+  <header class="title" id="hdr"><h1>スキチェマスターへの道</h1></header> 
+
+  <div class="wrap">
+    <div class="board" id="board">
+      <canvas id="cv"></canvas>
+      <button id="muteBtn" aria-label="ミュート切替">🔊</button>
+      <div id="welcome" class="welcome"><h2>目指せグレイト10連続！</h2></div>
+      <div id="overlay" class="overlay"><div class="ovtxt"></div></div>
+    </div>
+
+    <div class="tap-row" id="tapRow"><button id="tapBtn" disabled>TAP</button></div>
+
+    <!-- スタート＋ランキング（通常） -->
+    <div class="bar" id="btnBar">
+      <button id="startBtn" class="btn">▶ スタート</button>
+      <button id="rankNormalBtn" class="btn">🏆（通常）</button>
+    </div>
+
+    <!-- ララバイモード＋ランキング（ララバイ） -->
+    <div id="lullabyWrap">
+      <button id="lullabyBtn" class="btn">♪ ララバイモード</button>
+      <button id="rankLullabyBtn" class="btn">🏆（ララバイモード）</button>
+    </div>
+  </div>
+
+  <!-- ランキング -->
+  <dialog id="rankDlg">
+    <div class="dlg-head" id="rankTitle">🏆 自己ランキングTOP5（通常モード）</div>
+    <div class="dlg-body">
+      <table class="rank-list"><thead><tr><th>#</th><th>日付</th><th>連続グレイト数</th></tr></thead><tbody id="rankTbody"></tbody></table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin:10px 14px 14px"><button id="closeRank" class="btn">閉じる</button></div>
+    </div>
+  </dialog>
+
+<script>
+(() => {
+  // ===== 設定 =====
+  const CONFIG = {
+    RPM: 60,                       // 針の回転速度
+    COUNTDOWN_MS: 1200,
+
+    GOOD_RATIO  : 0.20,            // Good 幅（円周比）
+    GREAT_RATIO : 0.040,           // Great 幅（円周比） 
+
+    // 5時～10時（0=3時、角度増加＝時計回り）
+    GREAT_CENTER_MIN_DEG: 70,
+    GREAT_CENTER_MAX_DEG: 220,
+
+    INPUT_CD_MS: 45,
+    UNLOCK_STREAK: 10,             // 10連続でララバイ解放
+
+    SUCCESS_PAUSE_MS: 1300,        // 成功後→次ラウンド待機：1.3s
+    SUCCESS_FREEZE_VISIBLE_MS: 300,// 成功直後の静止表示：0.3s（針＆ゾーン見せたまま）
+    SHOW_DELAY_AFTER_KAN_MS: 400,  // 通常：ka-n→0.4s後に再表示
+    LULLABY_MIN_DELAY_MS: 400,     // ララバイ：0.4〜1.3秒
+    LULLABY_MAX_DELAY_MS: 1300,
+
+    // おまけグレイト許容角（Great終端を時計回りに超えた分、度）
+    GREAT_OVERSHOOT_GRACE_DEG: 2,
+
+    // ★盤面スケール（幅・高さの上限を縮小）…0.7で「今の0.7倍」
+    BOARD_SCALE: 0.7
+  };
+
+  // ===== 要素 =====
+  const $=id=>document.getElementById(id);
+  const hdr=$('hdr'), board=$('board'), cv=$('cv'), ctx=cv.getContext('2d',{alpha:false,desynchronized:true});
+  const tapRow=$('tapRow'), btnBar=$('btnBar'), lullabyWrap=$('lullabyWrap');
+  const tapBtn=$('tapBtn'), startBtn=$('startBtn'), lullabyBtn=$('lullabyBtn');
+  const rankNormalBtn=$('rankNormalBtn'), rankLullabyBtn=$('rankLullabyBtn');
+  const muteBtn=$('muteBtn'), overlay=$('overlay'), welcome=$('welcome');
+  const rankDlg=$('rankDlg'), rankTbody=$('rankTbody'), rankTitle=$('rankTitle'), closeRank=$('closeRank');
+
+  // ===== 状態 =====
+  let phase='idle';            // 'idle' | 'countdown' | 'play' | 'pause'
+  let streak=0, lastInputAt=0, rafId=0, isMuted=false;
+  let mode='normal';           // 'normal' | 'lullaby'
+  let isEnding=false;          // 重複終了ガード
+
+  const FULL=Math.PI*2;
+
+  // 時計回り：角度“増加”で進行。基準角は12時（-π/2）
+  let baseAngle=-Math.PI/2;
+  let baseTime=0;
+  let frozenAngle=-Math.PI/2;
+
+  // ゾーン（時計回りに start→end で定義）
+  let goodStart=0, goodEnd=0;
+  let greatStart=0, greatEnd=0;  // Great は Good の「進入側=右端（先頭）」に接する → greatStart=goodStart
+
+  // 表示制御
+  let showNeedle=false, showZones=true;
+
+  // 通過判定
+  let lastAngle=null;
+  let startedGuard=false;        // 開始直後1フレームは通過判定を無効化
+  const EPS=1e-4;
+
+  // 成功時の表示制御
+  let lastSuccessAngle = null;       // 実際に止めた角度
+  let lastSuccessWasGrace = false;   // おまけグレイトだったか
+
+  // ===== レイアウト =====
+  function visualH(){ return (window.visualViewport?.height) || window.innerHeight; }
+  function fitBoardToViewport(){
+    // 盤面の“最大幅”自体を縮める（幅＆高さが一緒に小さくなる）。下部ボタンには影響なし
+    const scaledMax = 720 * CONFIG.BOARD_SCALE;      // 720px → 0.7倍
+    board.style.maxWidth = scaledMax + 'px';
+
+    const vh=visualH(), headH=hdr.offsetHeight, tapH=tapRow.offsetHeight, barH=btnBar.offsetHeight;
+    const lullH=(lullabyWrap.offsetHeight||0) * ((lullabyBtn.style.display!=='none'||rankLullabyBtn.style.display!=='none')?1:0);
+    const reserve=headH+tapH+barH+lullH+12;
+
+    // boardの現在幅（maxWidth適用後）と、縦の空きの小さい方に正方形で合わせる
+    const currentW = board.getBoundingClientRect().width || scaledMax;
+    const idealSide = Math.min(currentW, Math.max(160, vh - reserve));
+
+    // 正方形にする
+    board.style.height = idealSide + 'px';
+  }
+  let cssW=0, cssH=0, dpr=1;
+  function resizeCanvas(){
+    fitBoardToViewport();
+    const rect=cv.getBoundingClientRect();
+    dpr=Math.max(1, Math.min(3, window.devicePixelRatio||1));
+    cssW=rect.width||300; cssH=rect.height||300;
+    cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    draw(getCurrentAngle(performance.now()));
+  }
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('orientationchange', resizeCanvas);
+  window.visualViewport?.addEventListener('resize', resizeCanvas);
+  requestAnimationFrame(resizeCanvas);
+
+  // ===== サウンド =====
+  const AudioCtx=window.AudioContext||window.webkitAudioContext;
+  let actx=null,gMaster=null;
+
+  const SOUND_FILES = {
+    tap   : 'tap.mp3',     // Great成功時のTAPのみ
+    ready : 'ready.mp3',   // スタート直後
+    ka_n  : 'ka-n.mp3',    // ラウンド開始直前（通常のみ）
+    batu  : 'batu.mp3',    // ミス音（Goodタップ）
+    ex    : 'ex.mp3',      // Good/Great外TAP & 自動ミス
+    fanfare: 'fanfare.mp3',// 予備
+    cong  : 'cong.mp3'     // ★10回以上で終了時に鳴らす
+  };
+  const buf={}; const html={};
+  Object.entries(SOUND_FILES).forEach(([key, file])=>{
+    const a=new Audio(file); a.preload='auto'; a.playsInline=true; html[key]=a; buf[key]=null;
+  });
+
+  async function unlockAndWarmAudio(){
+    try{
+      if(!actx){ actx=new AudioCtx({latencyHint:'interactive'}); gMaster=actx.createGain(); gMaster.gain.value=isMuted?0:1; gMaster.connect(actx.destination); }
+      if(actx.state==='suspended') await actx.resume();
+      await Promise.all(Object.entries(SOUND_FILES).map(async ([key,file])=>{
+        if(buf[key]) return;
+        const res=await fetch(file); const ab=await res.arrayBuffer(); buf[key]=await actx.decodeAudioData(ab);
+      }));
+    }catch{}
+  }
+  function setMuted(m){ isMuted=m; if(gMaster) gMaster.gain.value=m?0:1; Object.values(html).forEach(a=>a.muted=m); muteBtn.textContent=m?'🔇':'🔊'; }
+  function playBuf(key,gain=0.95){ try{ if(!actx||!buf[key]) return false; const src=actx.createBufferSource(); const g=actx.createGain(); g.gain.value=gain; src.buffer=buf[key]; src.connect(g).connect(gMaster||actx.destination); src.start(); return true;}catch{return false} }
+  function playSE(key){ if(isMuted) return; if(playBuf(key)) return; unlockAndWarmAudio(); const tag=html[key]; if(tag){ try{ tag.currentTime=0; tag.play(); }catch{} } }
+  window.addEventListener('pointerdown', ()=>{ unlockAndWarmAudio(); }, {once:true});
+
+  // ===== 角度／描画 =====
+  const norm=a=>(a%FULL+FULL)%FULL;
+  const cwDelta=(from,to)=> (to - from + FULL) % FULL; // 時計回り量
+
+  const angleAt = t => {
+    const rps = CONFIG.RPM / 60;
+    const d = (t - baseTime) / 1000;
+    return norm(baseAngle + rps * FULL * d); // 時計回り
+  };
+  const getCurrentAngle=t=>(phase==='play')?angleAt(t):frozenAngle;
+
+  function draw(angle){
+    const w=cssW,h=cssH,CX=w/2,CY=h/2, r=Math.min(w,h)*0.42;
+    ctx.clearRect(0,0,w,h);
+
+    // 外枠
+    ctx.beginPath(); ctx.arc(CX,CY,r,0,FULL); ctx.lineWidth=2; ctx.strokeStyle='#1a2330'; ctx.stroke();
+
+    // ゾーン（Good→Great）
+    if(showZones){
+      ctx.beginPath();
+      ctx.lineWidth=24; ctx.strokeStyle='#94a3b8';
+      ctx.arc(CX,CY,r,goodStart,goodEnd); ctx.stroke();
+
+      ctx.beginPath();
+      ctx.lineWidth=24; ctx.strokeStyle='#ffffff';
+      ctx.arc(CX,CY,r,greatStart,greatEnd); ctx.stroke();
+    }
+
+    // 針
+    if(showNeedle){
+      const fx=CX + r*1.2*Math.cos(angle);
+      const fy=CY + r*1.2*Math.sin(angle);
+      ctx.beginPath(); ctx.moveTo(CX,CY); ctx.lineTo(fx,fy);
+      ctx.lineWidth=6; ctx.lineCap='butt'; ctx.strokeStyle='#ef4444'; ctx.stroke();
+    }
+
+    // 連続表示（★フォント1.2倍）
+    const combo=String(streak);
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font=`900 ${Math.max(18,Math.round(r*0.32*1.2))}px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif`;
+    ctx.lineWidth=Math.max(2,Math.round(r*0.04)); 
+    ctx.strokeStyle='rgba(0,0,0,0.55)'; ctx.strokeText(combo,CX,CY-r*0.18);
+    ctx.fillStyle='#eaeef2'; ctx.fillText(combo,CX,CY-r*0.18); ctx.restore();
+  }
+
+  // ===== ユーティリティ =====
+  function deg2rad(d){ return d*Math.PI/180; }
+  function setNeedleAt12(now){
+    baseTime=now;
+    baseAngle = -Math.PI/2; // 12時
+    frozenAngle = -Math.PI/2;
+    lastAngle = baseAngle;
+  }
+  function randomIn(min,max){ return min + Math.random()*(max-min); }
+
+  // 表示用：角度 a を時計回り弧 s→e 内にクランプ（必要なときだけ使用）
+  function clampAngleToArc(a, s, e){
+    let ss = s, ee = e, aa = a;
+    if (ee < ss) ee += FULL;
+    while (aa < ss) aa += FULL;
+    while (aa > ee) aa -= FULL;
+    if (aa < ss) aa = ss;
+    if (aa > ee) aa = ee;
+    return norm(aa);
+  }
+
+  // 5～10時レンジに Good を置く → Great は Good の「進入側（先頭）」に接する
+  function placeZones(){
+    const goodW  = FULL * CONFIG.GOOD_RATIO;
+    const greatW = FULL * CONFIG.GREAT_RATIO;
+
+    const cdeg = randomIn(CONFIG.GREAT_CENTER_MIN_DEG, CONFIG.GREAT_CENTER_MAX_DEG);
+    const c = norm(deg2rad(cdeg)); // 中心角
+
+    const bStart = norm(c - goodW/2);
+    const bEnd   = norm(c + goodW/2);
+
+    const gStart = bStart;             // 進入側（先頭）
+    const gEnd   = norm(gStart + greatW);
+
+    goodStart=bStart; goodEnd=bEnd;
+    greatStart=gStart; greatEnd=gEnd;
+  }
+
+  // 角度 a が「時計回りの弧 s→e」に含まれるか
+  function inArcCW(a,s,e){ return (s<=e) ? (a>=s && a<=e) : (a>=s || a<=e); }
+
+  // “おまけグレイト”判定（Great終端を少し時計回りに超えているか）
+  function isGraceGreat(a){
+    const grace = deg2rad(CONFIG.GREAT_OVERSHOOT_GRACE_DEG);
+    if (inArcCW(a, greatStart, greatEnd)) return false; // 既にGreat内は通常成功
+    const over = cwDelta(greatEnd, a);                  // greatEnd→a の時計回り差
+    return over > 0 && over <= grace;                   // greatEnd直後（= Good側）だけおまけ
+  }
+
+  // ===== ループ（“最初にグッドゾーンを通り越した”瞬間にミス） =====
+  function loop(now){
+    const ang=getCurrentAngle(now);
+    draw(ang);
+
+    if(phase==='play' && lastAngle!=null){
+      if (startedGuard){
+        startedGuard=false;
+      } else {
+        const movedCW = cwDelta(lastAngle, ang);
+        const toGoodEnd = cwDelta(lastAngle, goodEnd);
+        if (movedCW > EPS && toGoodEnd > EPS && movedCW > toGoodEnd){
+          gameOver('ex'); // 何も押さずにGoodを通過
+          return;
+        }
+      }
+    }
+    lastAngle=ang;
+    rafId=requestAnimationFrame(loop);
+  }
+
+  // ===== 入力判定 =====
+  function tapTimestamp(e){
+    const ts=(e&&typeof e.timeStamp==='number')?e.timeStamp:performance.now();
+    return (Math.abs(ts - performance.now()) < 10000) ? ts : performance.now();
+  }
+
+  // ===== ゲームロジック =====
+  function setupInitial(){
+    placeZones();
+    resizeCanvas();
+    lastSuccessAngle = null;
+    lastSuccessWasGrace = false;
+  }
+
+  function showCountdown(){
+    overlay.classList.add('show');
+    const ov=overlay.querySelector('.ovtxt');
+    ov.style.transform='translateY(30%)'; // 既定位置
+    ov.style.color='yellow';
+    ov.textContent='Ready';
+
+    tapBtn.disabled=true; phase='countdown';
+    showNeedle=false; showZones=true; draw(frozenAngle);
+
+    const t0=performance.now(), mid=t0+CONFIG.COUNTDOWN_MS*0.6, end=t0+CONFIG.COUNTDOWN_MS;
+    const tick=()=>{
+      const now=performance.now();
+      if(now>=end){
+        overlay.classList.remove('show');
+        ov.textContent='';
+        phase='pause';
+        const startAfter = ()=>{
+          const t=performance.now();
+          setNeedleAt12(t);
+          showNeedle=true; showZones=true; draw(frozenAngle);
+          startedGuard=true;
+          phase='play';
+          tapBtn.disabled=false;
+        };
+        if(mode==='normal'){
+          playSE('ka_n');
+          setTimeout(startAfter, CONFIG.SHOW_DELAY_AFTER_KAN_MS);
+        }else{
+          const rnd = Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
+          setTimeout(startAfter, rnd);
+        }
+        return;
+      }
+      if(now>=mid){
+        ov.textContent='GO!';
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function startGame(which){
+    mode=which;
+    isEnding=false;
+    welcome.style.display='none';
+    playSE('ready'); unlockAndWarmAudio();
+    if(rafId) cancelAnimationFrame(rafId);
+    streak=0;
+    showNeedle=false; showZones=true;
+    setupInitial();
+    showCountdown();
+    rafId=requestAnimationFrame(loop);
+  }
+
+  // 成功後（Great）→ 次ラウンド準備
+  function endRoundAndQueueNext(){
+    phase='pause';
+
+    // 「グレイト！」（通常のオーバーレイ位置でOK）
+    overlay.classList.add('show');
+    const ov=overlay.querySelector('.ovtxt');
+    ov.style.transform='translateY(30%)';
+    ov.style.color='yellow';
+    ov.textContent='グレイト！';
+
+    // フリーズ中の針表示：通常は止めた角度／おまけだけ境目へ吸着
+    const now = performance.now();
+    const curAngle = angleAt(now);
+    const displayAngle =
+      (lastSuccessWasGrace ? norm(greatEnd) : (lastSuccessAngle ?? curAngle));
+
+    frozenAngle = displayAngle;
+    showNeedle = true;
+    showZones  = true;
+    draw(frozenAngle);
+
+    const freeze = CONFIG.SUCCESS_FREEZE_VISIBLE_MS;
+    const remain = Math.max(0, CONFIG.SUCCESS_PAUSE_MS - freeze);
+
+    setTimeout(()=>{
+      showNeedle=false;
+      showZones=false;
+      draw(frozenAngle);
+
+      placeZones();
+
+      setTimeout(()=>{
+        overlay.classList.remove('show');
+        ov.textContent='';
+
+        if(mode==='normal'){ playSE('ka_n'); }
+        const extra = (mode==='normal')
+          ? CONFIG.SHOW_DELAY_AFTER_KAN_MS
+          : Math.round(randomIn(CONFIG.LULLABY_MIN_DELAY_MS, CONFIG.LULLABY_MAX_DELAY_MS));
+
+        setTimeout(()=>{
+          const t=performance.now();
+          setNeedleAt12(t);
+          showNeedle=true;
+          showZones=true;
+          draw(frozenAngle);
+          startedGuard=true;
+          phase='play';
+        }, extra);
+      }, remain);
+    }, freeze);
+  }
+
+  function onTap(e){
+    if(phase!=='play' || isEnding) return;
+    const now=tapTimestamp(e);
+    if(now-lastInputAt<CONFIG.INPUT_CD_MS) return;
+    lastInputAt=now;
+
+    const a=angleAt(now);
+    const inGreat = inArcCW(a, greatStart, greatEnd);
+    const inGood  = inArcCW(a, goodStart,  goodEnd);
+    const grace   = isGraceGreat(a);
+
+    if(inGreat || grace){
+      playSE('tap');
+      streak++;
+      if(streak===CONFIG.UNLOCK_STREAK){ unlockLullaby(); } // 達成瞬間では鳴らさない（→終了時に鳴らす）
+
+      lastSuccessAngle = a;
+      lastSuccessWasGrace = !inGreat && grace;
+
+      endRoundAndQueueNext();
+    }else if(inGood){
+      gameOver('batu');
+    }else{
+      gameOver('ex');
+    }
+  }
+
+  function gameOver(soundKey='batu'){
+    if(isEnding) return;
+    isEnding=true;
+
+    if(soundKey){ playSE(soundKey); }
+
+    stopGame(true);
+    saveScore({score:streak, at:Date.now()});
+    updateUnlockVisibility();
+
+    overlay.classList.add('show');
+    const ov = overlay.querySelector('.ovtxt');
+
+    if (streak >= 10) {
+      // ★10回以上でゲーム終了時に祝砲（ここでだけcongを鳴らす）
+      playSE('cong');
+
+      // 2行メッセージは円中心に表示（改行が中心）
+      ov.style.transform = 'translateY(0)';
+      ov.style.lineHeight = '1';
+
+      if (mode === 'lullaby') {
+        // ララバイ時の特別文言
+        ov.innerHTML =
+          '<span style="color:#ffffff">ララバイモードで10回連続は神。</span><br>' +
+          '<span style="color:yellow">ぜひXでスクショを投稿してね！</span>';
+      } else {
+        // 通常モードの達成文言（1行目白、2行目黄）
+        ov.innerHTML =
+          '<span style="color:#ffffff">10回達成おめでとう！🎉</span><br>' +
+          '<span style="color:yellow">ララバイモードアンロック！</span>';
+      }
+    } else {
+      // 通常の失敗表示（既定位置へ戻す）
+      ov.style.transform = 'translateY(30%)';
+      ov.style.color = '#ffffff';
+      ov.textContent = '失敗';
+    }
+  }
+
+  function stopGame(keepOverlay){
+    phase='idle'; tapBtn.disabled=true;
+    showNeedle=false;
+    if(rafId) cancelAnimationFrame(rafId);
+    if(!keepOverlay){ overlay.classList.remove('show'); overlay.querySelector('.ovtxt').textContent=''; }
+    draw(frozenAngle);
+  }
+
+  // ===== ランキング =====
+  const KEY_NORMAL='rank_great_normal_v6';
+  const KEY_LULL  ='rank_great_lullaby_v6';
+  function loadScores(key){ try{ return JSON.parse(localStorage.getItem(key)||'[]'); }catch{return []} }
+  function saveScore(entry){
+    if(entry.score<=0) return;
+    const key=(mode==='lullaby')?KEY_LULL:KEY_NORMAL;
+    const arr=loadScores(key); arr.push(entry);
+    arr.sort((a,b)=> b.score-a.score || b.at-a.at);
+    localStorage.setItem(key, JSON.stringify(arr.slice(0,5)));
+  }
+  function openRanking(which){
+    const key=(which==='lullaby')?KEY_LULL:KEY_NORMAL;
+    const arr=loadScores(key);
+    rankTbody.innerHTML='';
+    arr.forEach((e,i)=>{
+      const d=new Date(e.at);
+      const date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const tr=document.createElement('tr'); tr.innerHTML=`<td>${i+1}</td><td>${date}</td><td>${e.score}</td>`;
+      rankTbody.appendChild(tr);
+    });
+    rankTitle.textContent=(which==='lullaby')?'🏆 自己ランキングTOP5（ララバイモード）':'🏆 自己ランキングTOP5（通常モード）';
+    rankDlg.showModal();
+  }
+
+  // ===== ララバイ解放 =====
+  const UNLOCK_KEY='unlock_lullaby_mode';
+  function isUnlocked(){ try{ return localStorage.getItem(UNLOCK_KEY)==='1'; }catch{ return false; } }
+  function unlockLullaby(){ try{ localStorage.setItem(UNLOCK_KEY,'1'); }catch{} updateUnlockVisibility(); }
+
+  function updateUnlockVisibility(){
+    const unlocked=isUnlocked();
+    lullabyBtn.style.display = unlocked ? 'inline-block' : 'none';
+    rankLullabyBtn.style.display = unlocked ? 'inline-block' : 'none';
+    requestAnimationFrame(resizeCanvas);
+  }
+
+  // ===== イベント =====
+  startBtn.addEventListener('click', e=>{ e.preventDefault(); startGame('normal'); }, {passive:false});
+  lullabyBtn.addEventListener('click', e=>{ e.preventDefault(); startGame('lullaby'); }, {passive:false});
+  tapBtn  .addEventListener('pointerdown', e=>{ e.preventDefault(); onTap(e); }, {passive:false});
+  window.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); onTap(e); } });
+
+  muteBtn.addEventListener('click', e=>{ e.preventDefault(); setMuted(!isMuted); }, {passive:false});
+  $('rankNormalBtn').addEventListener('click', e=>{ e.preventDefault(); openRanking('normal'); }, {passive:false});
+  $('rankLullabyBtn')   .addEventListener('click', e=>{ e.preventDefault(); openRanking('lullaby'); }, {passive:false});
+  $('closeRank')        .addEventListener('click', e=>{ e.preventDefault(); rankDlg.close(); }, {passive:false});
+
+  // ===== 初期化 =====
+  setMuted(false);
+  updateUnlockVisibility();
+  requestAnimationFrame(()=>{ resizeCanvas(); });
+})();
+</script>
+</body>
+</html>

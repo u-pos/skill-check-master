@@ -31,7 +31,7 @@
   .overlay.show{display:flex}
   .overlay .ovtxt { display:inline-block; color: yellow; line-height:1; }
 
-  /* ウェルカム表示 */
+  /* ウェルカム表示（円とTAPの間に配置するため、JSでtranslate） */
   .welcome{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;z-index:2;
     text-align:center;background:rgba(0,0,0,.25)}
   .welcome h2{margin:0;font-size:clamp(24px,7vw,43px);font-weight:900;color:#c8ffe0;}
@@ -112,8 +112,8 @@
     RPM: 60,                       
     COUNTDOWN_MS: 1200,
 
-    GOOD_RATIO  : 0.19,
-    GREAT_RATIO : 0.039,
+    GOOD_RATIO  : 0.18,
+    GREAT_RATIO : 0.036,
 
     GREAT_CENTER_MIN_DEG: 70,
     GREAT_CENTER_MAX_DEG: 225,
@@ -127,7 +127,7 @@
     LULLABY_MIN_DELAY_MS: 400,
     LULLABY_MAX_DELAY_MS: 1300,
 
-    // ★ おまけグレイトをさらに厳しく（1度以内）
+    // おまけグレイトを厳しめ（1度以内）
     GREAT_OVERSHOOT_GRACE_DEG: 1,
 
     // 見た目スケール
@@ -168,6 +168,10 @@
   let lastRadius=0;
   let lastZoneLineWidth=24*CONFIG.DRAW_SCALE;
 
+  // ★ TAP瞬間の成功情報（おまけ吸着の確実化）
+  let lastSuccessAngle = null;       // TAP瞬間の角度
+  let lastSuccessWasGrace = false;   // TAP瞬間に“おまけ”だったか
+
   // ===== レイアウト（黒い盤面は従来通り） =====
   function visualH(){ return (window.visualViewport?.height) || window.innerHeight; }
   function fitBoardToViewport(){
@@ -186,7 +190,7 @@
     cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr);
     ctx.setTransform(dpr,0,0,dpr,0,0);
     draw(getCurrentAngle(performance.now()));
-    // 位置を更新（半径が変わるたび）
+    // 半径が決まったらウェルカムの位置を更新
     placeWelcomeBetweenCircleAndTap();
   }
   window.addEventListener('resize', resizeCanvas);
@@ -279,12 +283,12 @@
 
   // ★ 円の“上/下（TAPボタン側）”にオーバーレイ文字を置く
   function placeOverlayAboveCircle(ov){
-    const margin = 24; // もう少し上へ
+    const margin = 24; // 上方向の余白
     const dy = - (lastRadius + (lastZoneLineWidth/2) + margin);
     ov.style.transform = `translateY(${dy}px)`;
   }
   function placeOverlayBelowCircle(ov){
-    const margin = 20; // TAP側の余白
+    const margin = 20; // 下方向（TAP側）の余白
     const dy = (lastRadius + (lastZoneLineWidth/2) + margin);
     ov.style.transform = `translateY(${dy}px)`;
   }
@@ -293,7 +297,6 @@
   function placeWelcomeBetweenCircleAndTap(){
     const margin = 22;
     const dy = (lastRadius + (lastZoneLineWidth/2) + margin);
-    // welcome全体は中央寄せなので、テキストだけを下にオフセット
     welcomeText.style.transform = `translateY(${dy}px)`;
   }
 
@@ -365,6 +368,9 @@
   function setupInitial(){
     placeZones();
     resizeCanvas();
+    // ★ 成功情報をリセット
+    lastSuccessAngle = null;
+    lastSuccessWasGrace = false;
   }
 
   function showCountdown(){
@@ -433,10 +439,9 @@
     ov.textContent='グレイト！';
     placeOverlayAboveCircle(ov);      // ★ 円の上に配置
 
-    // 針の表示：通常はその場、”おまけ”は Great終端に吸着
-    const now = performance.now();
-    const curAngle = angleAt(now);
-    const displayAngle = isGraceGreat(curAngle) ? norm(greatEnd) : curAngle;
+    // ★ TAP瞬間の情報を使って、必ず吸着させる
+    const displayAngle =
+      lastSuccessWasGrace ? norm(greatStart) : (lastSuccessAngle ?? angleAt(performance.now()));
 
     frozenAngle = displayAngle;
     showNeedle = true;
@@ -488,6 +493,11 @@
       playSE('tap');
       streak++;
       if (streak === CONFIG.UNLOCK_STREAK) { unlockLullaby(); }
+
+      // ★ TAP瞬間の結果を保存（ここがポイント）
+      lastSuccessAngle = a;
+      lastSuccessWasGrace = (!inGreat && grace);
+
       frozenAngle = a;
       endRoundAndQueueNext();
     } else if(inGood){
@@ -566,8 +576,8 @@
   function unlockLullaby(){ try{ localStorage.setItem(UNLOCK_KEY,'1'); }catch{} updateUnlockVisibility(); }
   function updateUnlockVisibility(){
     const unlocked=isUnlocked();
-    lullabyBtn.style.display = unlocked ? 'inline-block' : 'none';
-    rankLullabyBtn.style.display = unlocked ? 'inline-block' : 'none';
+    $('lullabyBtn').style.display = unlocked ? 'inline-block' : 'none';
+    $('rankLullabyBtn').style.display = unlocked ? 'inline-block' : 'none';
     requestAnimationFrame(resizeCanvas);
   }
 

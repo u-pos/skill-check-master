@@ -333,7 +333,7 @@
   function isGraceGreat(a){
     const grace = deg2rad(CONFIG.GREAT_OVERSHOOT_GRACE_DEG);
     if (inArcCW(a, greatStart, greatEnd)) return false;
-    const over = cwDelta(greatEnd, a);
+    const over = cwDelta(greatStart, a);
     return over > 0 && over <= grace;
   }
 

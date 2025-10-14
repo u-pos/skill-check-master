@@ -75,7 +75,7 @@
     <div class="board" id="board">
       <canvas id="cv"></canvas>
       <button id="muteBtn" aria-label="ミュート切替">🔊</button>
-      <div id="welcome" class="welcome"><h2 id="welcomeText">目指せグレイト10連続！</h2></div>
+      <div id="welcome" class="welcome"><h2 id="welcomeText">目指せグレイト5連続！</h2></div>
       <div id="overlay" class="overlay"><div class="ovtxt"></div></div>
     </div>
 
@@ -114,7 +114,7 @@
     GREAT_CENTER_MAX_DEG: 225,
 
     INPUT_CD_MS: 45,
-    UNLOCK_STREAK: 10,
+    UNLOCK_STREAK: 5, // ★ ここを 10 -> 5 に変更
 
     SUCCESS_PAUSE_MS: 1300,
     SUCCESS_FREEZE_VISIBLE_MS: 300,
@@ -135,6 +135,9 @@
   const rankNormalBtn=$('rankNormalBtn'), rankLullabyBtn=$('rankLullabyBtn');
   const muteBtn=$('muteBtn'), overlay=$('overlay'), welcome=$('welcome'), welcomeText=$('welcomeText');
   const rankDlg=$('rankDlg'), rankTbody=$('rankTbody'), rankTitle=$('rankTitle'), closeRank=$('closeRank');
+
+  // ★ ウェルカム文言を設定値に合わせて自動更新
+  welcomeText.textContent = `目指せグレイト${CONFIG.UNLOCK_STREAK}連続！`;
 
   // ===== 状態 =====
   let phase='idle';
@@ -506,14 +509,15 @@
     overlay.classList.add('show');
     const ov = overlay.querySelector('.ovtxt');
 
-    if (streak >= 10) {
+    const N = CONFIG.UNLOCK_STREAK; // ★ 閾値を設定から参照
+    if (streak >= N) {
       playSE('cong'); // 終了時のみ祝砲
       ov.style.color = 'yellow';
       placeOverlayBelowCircle(ov); // 円とTAPの間
       if (mode === 'lullaby') {
-        ov.innerHTML = '<span style="color:#ffffff">ララバイモードで10回連続は神。</span><br><span style="color:yellow">ぜひXでスクショを投稿してね！</span>';
+        ov.innerHTML = `<span style="color:#ffffff">ララバイモードで${N}回連続は神。</span><br><span style="color:yellow">ぜひXでスクショを投稿してね！</span>`;
       } else {
-        ov.innerHTML = '<span style="color:#ffffff">10回達成おめでとう！🎉</span><br><span style="color:yellow">ララバイモードアンロック！</span>';
+        ov.innerHTML = `<span style="color:#ffffff">${N}回達成おめでとう！🎉</span><br><span style="color:yellow">ララバイモードアンロック！</span>`;
       }
     } else {
       // ★ 失敗時は円とTAPの“間”に白い GAMEOVER を表示
@@ -552,7 +556,7 @@
       const tr=document.createElement('tr'); tr.innerHTML=`<td>${i+1}</td><td>${date}</td><td>${e.score}</td>`;
       rankTbody.appendChild(tr);
     });
-    rankTitle.textContent=(which==='lullaby')?'🏆 自己ランキングTOP5（ララバイモード）':'🏆 自己ランキングTOP5（通常モード）';
+    rankTitle.textContent=(which==='lullaby')?'🏆 自己ランキングTOP5（ララバイ）':'🏆 自己ランキングTOP5（通常）';
     rankDlg.showModal();
   }
 

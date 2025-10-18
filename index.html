@@ -120,7 +120,7 @@
     SUCCESS_FREEZE_VISIBLE_MS: 300,
     SHOW_DELAY_AFTER_KAN_MS: 400,
     LULLABY_MIN_DELAY_MS: 400,
-    LULLABY_MAX_DELAY_MS: 1300,
+    LULLABY_MAX_DELAY_MS: 1500,
 
     GREAT_OVERSHOOT_GRACE_DEG: 1, // おまけ幅（厳しめ）
 
@@ -515,7 +515,7 @@
       ov.style.color = 'yellow';
       placeOverlayBelowCircle(ov); // 円とTAPの間
       if (mode === 'lullaby') {
-        ov.innerHTML = `<span style="color:#ffffff">ララバイモードで${N}回連続は神。</span><br><span style="color:yellow">ぜひXでスクショを投稿してね！</span>`;
+        ov.innerHTML = `<span style="color:#ffffff">ララバイモードで${N}回連続は神。</span>`;
       } else {
         ov.innerHTML = `<span style="color:#ffffff">${N}回達成おめでとう！🎉</span><br><span style="color:yellow">ララバイモードアンロック！</span>`;
       }
